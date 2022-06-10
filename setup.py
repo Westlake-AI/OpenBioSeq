@@ -13,7 +13,7 @@ def readme():
 
 MAJOR = 0
 MINOR = 1
-PATCH = 0
+PATCH = 1
 SUFFIX = ''
 if PATCH != '':
     SHORT_VERSION = '{}.{}.{}{}'.format(MAJOR, MINOR, PATCH, SUFFIX)
@@ -166,14 +166,14 @@ def parse_requirements(fname='requirements.txt', with_version=True):
 if __name__ == '__main__':
     write_version_py()
     setup(
-        name='openbioseq',
+        name='OpenBioSeq',
         version=get_version(),
         description='Open Bio-sequence Toolbox for Supervision and Self-Supervision Learning',
         long_description=readme(),
         author='CAIRI Westlake University Contributors',
         author_email='lisiyuan@westlake.edu.com',
-        keywords='bio-sequence embedding, semi- and self-supervised learning',
-        url='https://github.com/Westlake-AI/openbioseq',
+        keywords='bio-sequence embedding, supervised and self-supervised learning',
+        url='https://github.com/Westlake-AI/OpenBioSeq',
         packages=find_packages(exclude=('configs', 'tools', 'demo')),
         classifiers=[
             'Development Status :: 4 - Beta',

@@ -21,12 +21,9 @@ from ..utils import cutmix, mixup, saliencymix, resizemix, fmix, attentivemix
 @MODELS.register_module
 class MixUpClassification(BaseModel):
     """MixUp classification.
-        v01.09 (randomly selecting mix_mode)
-        v01.17 (add mix_repeat)
-        v03.09 (add dynamic methods)
 
     Args:
-        backbone (dict): Config dict for module of backbone ConvNet.
+        backbone (dict): Config dict for module of backbone.
         head (dict): Config dict for module of loss functions. Default: None.
         backbone_k (dict, optional): Config dict for pre-trained backbone. Default: None.
         mix_block (dict, optional): Config dict for mix_block in AutoMix/SAMix.

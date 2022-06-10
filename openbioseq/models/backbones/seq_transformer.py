@@ -13,7 +13,8 @@ from mmcv.runner.base_module import ModuleList
 from mmcv.utils.parrots_wrapper import _BatchNorm
 
 from openbioseq.utils import get_root_logger, print_log
-from ..utils import resize_pos_embed, PatchEmbed1d, build_1d_sincos_position_embedding
+from ..utils import resize_pos_embed, PatchEmbed1d, ConvPatchEmbed1d, \
+                    build_1d_sincos_position_embedding
 from ..builder import BACKBONES
 from .base_backbone import BaseBackbone
 from .vision_transformer import TransformerEncoderLayer
@@ -58,17 +59,23 @@ class SequenceTransformer(BaseBackbone):
             ``with_cls_token`` must be True. Defaults to True.
         interpolate_mode (str): Select the interpolate mode for position
             embeding vector resize. Defaults to "linear".
+        init_values (float, optional): The init value of gamma in
+            TransformerEncoderLayer. Defaults to 0.
         patch_cfg (dict): Configs of patch embeding. Defaults to an empty dict.
         layer_cfgs (Sequence | dict): Configs of each transformer layer in
             encoder. Defaults to an empty dict.
+        stop_grad_conv1 (bool): Whether to stop grad of conv1 in PatchEmbed (for
+            MoCo.V3 design). Defaults to False.
+        fix_pos_embed (bool): Whether to use learnable pos_embed or fixed sin-cos
+            pos_embed. Defaults to True.
     """
     arch_zoo = {
         **dict.fromkeys(
-            ['4-layers-t', '4-layers-tiny',], {
-                'embed_dims': 128,
-                'num_layers': 4,
-                'num_heads': 4,
-                'feedforward_channels': 128 * 4,
+            ['t', 'tiny',], {
+                'embed_dims': 384,
+                'num_layers': 6,
+                'num_heads': 6,
+                'feedforward_channels': 384 * 4,
             }),
         **dict.fromkeys(  # ViT-like
             ['s', 'small'], {
@@ -120,13 +127,12 @@ class SequenceTransformer(BaseBackbone):
                 'feedforward_channels': 1536,
             }),
     }
-    # Some structures have multiple extra tokens, like DeiT.
-    num_extra_tokens = 1  # cls_token
 
     def __init__(self,
                  arch='base',
                  seq_len=128,
                  patch_size=16,
+                 patchfied=True,
                  in_channels=3,
                  embed_dims=None,
                  out_indices=-1,
@@ -134,13 +140,17 @@ class SequenceTransformer(BaseBackbone):
                  drop_path_rate=0.,
                  qkv_bias=True,
                  norm_cfg=dict(type='LN', eps=1e-6),
+                 act_cfg=dict(type='GELU'),
+                 stem_layer=1,
                  final_norm=True,
                  with_cls_token=True,
                  output_cls_token=True,
                  interpolate_mode='linear',
+                 init_values=0.0,
                  patch_cfg=dict(),
                  layer_cfgs=dict(),
                  stop_grad_conv1=False,
+                 fix_pos_embed=False,
                  frozen_stages=-1,
                  norm_eval=False,
                  init_cfg=None,
@@ -182,10 +192,18 @@ class SequenceTransformer(BaseBackbone):
             embed_dims=self.embed_dims,
             conv_type='Conv1d',
             kernel_size=patch_size,
-            stride=patch_size,
+            stride=patch_size if patchfied else patch_size // 2,
         )
-        _patch_cfg.update(patch_cfg)
-        self.patch_embed = PatchEmbed1d(**_patch_cfg)
+        if stem_layer <= 1:
+            _patch_cfg.update(patch_cfg)
+            self.patch_embed = PatchEmbed1d(**_patch_cfg)
+        else:
+            _patch_cfg.update(dict(
+                num_layers=stem_layer,
+                act_cfg=act_cfg,
+            ))
+            _patch_cfg.update(patch_cfg)
+            self.patch_embed = ConvPatchEmbed1d(**_patch_cfg)
         self.patch_resolution = self.patch_embed.init_out_size
         self.num_patches = self.patch_embed.init_out_size
 
@@ -195,14 +213,18 @@ class SequenceTransformer(BaseBackbone):
                 f'set output_cls_token to True, but got {with_cls_token}'
         self.with_cls_token = with_cls_token
         self.output_cls_token = output_cls_token
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, self.embed_dims))
+        if with_cls_token and output_cls_token:
+            self.num_extra_tokens = 1  # cls_token
+            self.cls_token = nn.Parameter(torch.zeros(1, 1, self.embed_dims))
+        else:
+            self.cls_token = None
+            self.num_extra_tokens = 0
 
         # Set position embedding
         self.interpolate_mode = interpolate_mode
         self.pos_embed = nn.Parameter(
             torch.zeros(1, self.num_patches + self.num_extra_tokens, self.embed_dims))
         self._register_load_state_dict_pre_hook(self._prepare_pos_embed)
-
         self.drop_after_pos = nn.Dropout(p=drop_rate)
 
         if isinstance(out_indices, int):
@@ -229,9 +251,11 @@ class SequenceTransformer(BaseBackbone):
                 num_heads=self.arch_settings['num_heads'],
                 feedforward_channels=self.arch_settings['feedforward_channels'],
                 drop_rate=drop_rate,
+                init_values=init_values,
                 drop_path_rate=dpr[i],
                 qkv_bias=qkv_bias,
-                norm_cfg=norm_cfg)
+                norm_cfg=norm_cfg,
+                act_cfg=act_cfg)
             _layer_cfg.update(layer_cfgs[i])
             self.layers.append(TransformerEncoderLayer(**_layer_cfg))
 
@@ -242,10 +266,18 @@ class SequenceTransformer(BaseBackbone):
             self.add_module(self.norm1_name, norm1)
         
         # freeze stages
+        self.stop_grad_conv1 = stop_grad_conv1
+        self.fix_pos_embed = fix_pos_embed
         if isinstance(self.patch_embed, PatchEmbed1d):
             if stop_grad_conv1:
                 self.patch_embed.projection.weight.requires_grad = False
                 self.patch_embed.projection.bias.requires_grad = False
+        if fix_pos_embed:
+            pos_emb = build_1d_sincos_position_embedding(
+                patches_size=self.patch_resolution, embed_dims=self.embed_dims,
+                cls_token=True)
+            self.pos_embed.data.copy_(pos_emb)
+            self.pos_embed.requires_grad = False
         self._freeze_stages()
     
     @property
@@ -256,7 +288,7 @@ class SequenceTransformer(BaseBackbone):
         super(SequenceTransformer, self).init_weights(pretrained)
 
         if pretrained is None:
-            if self.arch != "mocov3":  # normal ViT
+            if "mocov3" not in self.arch:  # normal ViT
                 for m in self.modules():
                     if isinstance(m, (nn.Conv1d, nn.Linear)):
                         trunc_normal_init(m, std=0.02, bias=0)
@@ -264,8 +296,10 @@ class SequenceTransformer(BaseBackbone):
                         nn.LayerNorm, _BatchNorm, nn.GroupNorm, nn.SyncBatchNorm)):
                         constant_init(m, val=1, bias=0)
                 # pos_embed & cls_token
-                nn.init.trunc_normal_(self.pos_embed, mean=0, std=.02)
-                nn.init.trunc_normal_(self.cls_token, mean=0, std=.02)
+                if not self.fix_pos_embed:
+                    nn.init.trunc_normal_(self.pos_embed, mean=0, std=.02)
+                if self.cls_token is not None:
+                    nn.init.trunc_normal_(self.cls_token, mean=0, std=.02)
             else:  # MoCo.V3 pre-training
                 # Use fixed 1D sin-cos position embedding
                 pos_emb = build_1d_sincos_position_embedding(
@@ -288,7 +322,8 @@ class SequenceTransformer(BaseBackbone):
                             uniform_init(m, -val, val, bias=0)
                         else:
                             xavier_init(m, distribution='uniform')
-                nn.init.normal_(self.cls_token, std=1e-6)
+                if self.cls_token is not None:
+                    nn.init.normal_(self.cls_token, std=1e-6)
     
     def _prepare_pos_embed(self, state_dict, prefix, *args, **kwargs):
         name = prefix + 'pos_embed'
@@ -320,9 +355,9 @@ class SequenceTransformer(BaseBackbone):
         B = x.shape[0]
         x, seq_len = self.patch_embed(x)
         
-        # stole cls_tokens impl from Phil Wang, thanks
-        cls_tokens = self.cls_token.expand(B, -1, -1)
-        x = torch.cat((cls_tokens, x), dim=1)
+        if self.cls_token is not None:
+            cls_tokens = self.cls_token.expand(B, -1, -1)
+            x = torch.cat((cls_tokens, x), dim=1)
         x = x + resize_pos_embed(
             self.pos_embed,
             src_shape=self.patch_resolution,
@@ -330,10 +365,6 @@ class SequenceTransformer(BaseBackbone):
             mode=self.interpolate_mode,
             num_extra_tokens=self.num_extra_tokens)
         x = self.drop_after_pos(x)
-
-        if not self.with_cls_token:
-            # Remove class token for transformer encoder input
-            x = x[:, 1:]
 
         outs = []
         for i, layer in enumerate(self.layers):
@@ -366,8 +397,9 @@ class SequenceTransformer(BaseBackbone):
             self.patch_embed.eval()
             for param in self.patch_embed.parameters():
                 param.requires_grad = False
-
-            self.cls_token.requires_grad = False
+            
+            if self.cls_token is not None:
+                self.cls_token.requires_grad = False
             self.pos_embed.requires_grad = False
 
         for i in range(1, self.frozen_stages + 1):

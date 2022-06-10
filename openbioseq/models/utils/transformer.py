@@ -1,11 +1,14 @@
 # Reference: https://github.com/open-mmlab/mmclassification/blob/master/mmcls/models/utils/attention.py
+from typing import Sequence
 import warnings
 
+import numpy as np
 import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mmcv.cnn import build_activation_layer, build_conv_layer, build_norm_layer
+from mmcv.cnn import (build_activation_layer, build_conv_layer,
+                      build_norm_layer, ConvModule)
 from mmcv.cnn.bricks.registry import DROPOUT_LAYERS
 from mmcv.cnn.bricks.transformer import build_dropout
 from mmcv.cnn.utils.weight_init import trunc_normal_
@@ -385,6 +388,138 @@ class MultiheadAttention(BaseModule):
         return x
 
 
+class MultiheadAttentionWithRPE(MultiheadAttention):
+    """Multi-head Attention Module.
+
+    This module rewrite the MultiheadAttention in MMSelfSup by adding the
+    relative position bias.
+
+    Args:
+        embed_dims (int): The embedding dimension.
+        num_heads (int): Parallel attention heads.
+        window_size (int): The window size of the relative position bias.
+        input_dims (int, optional): The input dimension, and if None,
+            use ``embed_dims``. Defaults to None.
+        attn_drop (float): Dropout rate of the dropout layer after the
+            attention calculation of query and key. Defaults to 0.
+        proj_drop (float): Dropout rate of the dropout layer after the
+            output projection. Defaults to 0.
+        dropout_layer (dict): The dropout config before adding the shortcut.
+            Defaults to ``dict(type='Dropout', drop_prob=0.)``.
+        qkv_bias (bool): If True, add a learnable bias to q, k, v.
+            Defaults to True.
+        qk_scale (float, optional): Override default qk scale of
+            ``head_dim ** -0.5`` if set. Defaults to None.
+        proj_bias (bool) If True, add a learnable bias to output projection.
+            Defaults to True.
+        init_cfg (dict, optional): The Config for initialization.
+            Defaults to None.
+    """
+
+    def __init__(self,
+                 embed_dims: int,
+                 num_heads: int,
+                 window_size: int,
+                 input_dims: int = None,
+                 attn_drop: float = 0,
+                 proj_drop: float = 0,
+                 qkv_bias: bool = True,
+                 qk_scale: float = None,
+                 proj_bias: bool = True,
+                 init_cfg: dict = None) -> None:
+        super().__init__(
+            embed_dims=embed_dims,
+            num_heads=num_heads,
+            input_dims=input_dims,
+            attn_drop=attn_drop,
+            proj_drop=proj_drop,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            proj_bias=proj_bias,
+            init_cfg=init_cfg)
+
+        self.qkv = nn.Linear(self.input_dims, embed_dims * 3, bias=False)
+        if qkv_bias:
+            self.q_bias = nn.Parameter(torch.zeros(embed_dims))
+            self.v_bias = nn.Parameter(torch.zeros(embed_dims))
+        else:
+            self.q_bias = None
+            self.k_bias = None
+            self.v_bias = None
+
+        assert isinstance(window_size, Sequence)
+        self.window_size = window_size
+        self.num_relative_distance = (2 * window_size[0] -
+                                      1) * (2 * window_size[1] - 1) + 3
+        # relative_position_bias_table shape is (2*Wh-1 * 2*Ww-1 + 3, nH)
+        self.relative_position_bias_table = nn.Parameter(
+            torch.zeros(self.num_relative_distance, num_heads))
+
+        # get pair-wise relative position index for
+        # each token inside the window
+        coords_h = torch.arange(window_size[0])
+        coords_w = torch.arange(window_size[1])
+        # coords shape is (2, Wh, Ww)
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))
+        # coords_flatten shape is (2, Wh*Ww)
+        coords_flatten = torch.flatten(coords, 1)
+        relative_coords = (
+            coords_flatten[:, :, None] - coords_flatten[:, None, :])
+        # relative_coords shape is (Wh*Ww, Wh*Ww, 2)
+        relative_coords = relative_coords.permute(1, 2, 0).contiguous()
+        # shift to start from 0
+        relative_coords[:, :, 0] += window_size[0] - 1
+        relative_coords[:, :, 1] += window_size[1] - 1
+        relative_coords[:, :, 0] *= 2 * window_size[1] - 1
+        relative_position_index = torch.zeros(
+            size=(window_size[0] * window_size[1] + 1, ) * 2,
+            dtype=relative_coords.dtype)
+
+        # relative_position_index shape is (Wh*Ww, Wh*Ww)
+        relative_position_index[1:, 1:] = relative_coords.sum(-1)
+        relative_position_index[0, 0:] = self.num_relative_distance - 3
+        relative_position_index[0:, 0] = self.num_relative_distance - 2
+        relative_position_index[0, 0] = self.num_relative_distance - 1
+
+        self.register_buffer('relative_position_index',
+                             relative_position_index)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        qkv_bias = None
+        if self.q_bias is not None:
+            qkv_bias = torch.cat(
+                (self.q_bias,
+                 torch.zeros_like(self.v_bias,
+                                  requires_grad=False), self.v_bias))
+        B, N, _ = x.shape
+        qkv = F.linear(
+            x, weight=self.qkv.weight,
+            bias=qkv_bias).reshape(B, N, 3, self.num_heads,
+                                   self.head_dims).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+
+        q = q * self.scale
+        attn = (q @ k.transpose(-2, -1))
+
+        if self.relative_position_bias_table is not None:
+            relative_position_bias = \
+                self.relative_position_bias_table[
+                    self.relative_position_index.view(-1)].view(
+                        self.window_size[0] * self.window_size[1] + 1,
+                        self.window_size[0] * self.window_size[1] + 1, -1)
+            relative_position_bias = relative_position_bias.permute(
+                2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+            attn = attn + relative_position_bias.unsqueeze(0)
+
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B, N, self.embed_dims)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
+
+
 class ConditionalPositionEncoding(BaseModule):
     """The Conditional Position Encoding (CPE) module.
 
@@ -485,6 +620,62 @@ def resize_pos_embed(pos_embed,
     dst_weight = torch.flatten(dst_weight, 2).transpose(1, 2)
 
     return torch.cat((extra_tokens, dst_weight), dim=1)
+
+
+def resize_relative_position_bias_table(src_shape, dst_shape, table, num_head):
+    """Resize relative position bias table.
+
+    Args:
+        src_shape (int): The resolution of downsampled origin training
+            image, in format (H, W).
+        dst_shape (int): The resolution of downsampled new training
+            image, in format (H, W).
+        table (tensor): The relative position bias of the pretrained model.
+        num_head (int): Number of attention heads.
+
+    Returns:
+        torch.Tensor: The resized relative position bias table.
+    """
+    from scipy import interpolate
+
+    def geometric_progression(a, r, n):
+        return a * (1.0 - r**n) / (1.0 - r)
+
+    left, right = 1.01, 1.5
+    while right - left > 1e-6:
+        q = (left + right) / 2.0
+        gp = geometric_progression(1, q, src_shape // 2)
+        if gp > dst_shape // 2:
+            right = q
+        else:
+            left = q
+
+    dis = []
+    cur = 1
+    for i in range(src_shape // 2):
+        dis.append(cur)
+        cur += q**(i + 1)
+
+    r_ids = [-_ for _ in reversed(dis)]
+
+    x = r_ids + [0] + dis
+    y = r_ids + [0] + dis
+
+    t = dst_shape // 2.0
+    dx = np.arange(-t, t + 0.1, 1.0)
+    dy = np.arange(-t, t + 0.1, 1.0)
+
+    all_rel_pos_bias = []
+
+    for i in range(num_head):
+        z = table[:, i].view(src_shape, src_shape).float().numpy()
+        f_cubic = interpolate.interp2d(x, y, z, kind='cubic')
+        all_rel_pos_bias.append(
+            torch.Tensor(f_cubic(dx,
+                                 dy)).contiguous().view(-1,
+                                                        1).to(table.device))
+    new_rel_pos_bias = torch.cat(all_rel_pos_bias, dim=-1)
+    return new_rel_pos_bias
 
 
 class PatchEmbed(BaseModule):
@@ -719,6 +910,109 @@ class PatchEmbed1d(BaseModule):
             x = self.norm(x)
         if self.activate is not None:
             x = self.activate(x)
+        return x, out_len
+
+
+class ConvPatchEmbed1d(BaseModule):
+    """Data to Patch Embedding for 1D Sequence.
+
+    Args:
+        in_channels (int): The num of input channels. Default: 3.
+        embed_dims (int): The dimensions of embedding. Default: 768.
+        num_layers (int): The number of convolution layers. Default: 2.
+        conv_type (str): The type of convolution
+            to generate patch embedding. Default: "Conv2d".
+        kernel_size (int): The kernel_size of embedding conv. Default: 16.
+        stride (int): The slide stride of embedding conv.
+            Default: 16.
+        padding (int | tuple | string): The padding length of embedding
+            conv. When it is a string, it means the mode of full padding,
+            support "same" and "corner" now. Default: "corner".
+        dilation (int): The dilation rate of embedding conv. Default: 1.
+        bias (bool): Bias of embed conv. Default: True.
+        norm_cfg (dict, optional): Config dict for normalization layer.
+            Default: None.
+        act_cfg (dict, optional): Config dict for activation layer.
+            Default: None.
+        input_size (int | None): The size of input, which will be
+            used to calculate the out size. Only works when `dynamic_size`
+            is False. Default: None.
+        init_cfg (`mmcv.ConfigDict`, optional): The Config for initialization.
+            Default: None.
+    """
+
+    def __init__(self,
+                 in_channels=3,
+                 embed_dims=768,
+                 num_layers=2,
+                 conv_type='Conv1d',
+                 kernel_size=16,
+                 stride=16,
+                 padding='corner',
+                 dilation=1,
+                 bias=True,
+                 norm_cfg=None,
+                 act_cfg=None,
+                 input_size=None,
+                 init_cfg=None):
+        super(ConvPatchEmbed1d, self).__init__(init_cfg)
+        
+        self.embed_dims = embed_dims
+        self.num_layers = num_layers
+        if stride is None:
+            stride = kernel_size
+        
+        if isinstance(padding, str):
+            self.adaptive_padding = AdaptivePadding1d(
+                kernel_size=kernel_size,
+                stride=stride,
+                dilation=dilation,
+                padding=padding)
+            # disable the padding of conv
+            padding = 0
+        else:
+            self.adaptive_padding = None
+        
+        layers = [
+            ConvModule(
+                in_channels=in_channels if i == 0 else \
+                    embed_dims // 2 ** (-i + self.num_layers),
+                out_channels=embed_dims // 2 ** (-i + self.num_layers-1),
+                kernel_size=kernel_size,
+                stride=stride if i == 0 else 1,
+                padding=padding if i == 0 else kernel_size // 2,
+                bias=bias,
+                conv_cfg=dict(type=conv_type),
+                norm_cfg=norm_cfg,
+                act_cfg=act_cfg if i != self.num_layers - 1 else None,
+            ) for i in range(self.num_layers)
+        ]
+        self.projection = nn.Sequential(*layers)
+
+        if input_size:
+            assert isinstance(input_size, int), f"1D Sequence length {input_size}."
+            # `init_out_size` would be used outside to
+            # calculate the num_patches
+            # e.g. when `use_abs_pos_embed` outside
+            self.init_input_size = input_size
+            if self.adaptive_padding:
+                pad = self.adaptive_padding.get_pad_shape(input_size)
+                input_size += + pad
+            
+            self.init_out_size = (input_size + 2 * padding - dilation *
+                                 (kernel_size - 1) - 1) // stride + 1
+        else:
+            self.init_input_size = None
+            self.init_out_size = None
+        self.num_patches = self.init_out_size
+
+    def forward(self, x):
+        if self.adaptive_padding:
+            x = self.adaptive_padding(x)
+        
+        x = self.projection(x)
+        out_len = x.shape[2]
+        x = x.transpose(1, 2)
         return x, out_len
 
 

@@ -343,7 +343,7 @@ class ResLayer(nn.Sequential):
                  stride=1,
                  avg_down=False,
                  conv_cfg=None,
-                 norm_cfg=dict(type='BN'),
+                 norm_cfg=dict(type='BN2d'),
                  **kwargs):
         self.block = block
         self.expansion = get_expansion(block, expansion)
@@ -432,6 +432,7 @@ class ResNet(BaseBackbone):
         norm_eval (bool): Whether to set norm layers to eval mode, namely,
             freeze running stats (mean and var). Note: Effect on Batch Norm
             and its variants only. Default: False.
+        feature_Nd (str): Build Nd network in {'1d', '2d'}. Default: '2d'.
         with_cp (bool): Use checkpoint or not. Using checkpoint will save some
             memory while slowing down the training speed. Default: False.
         zero_init_residual (bool): Whether to use zero init for last norm layer
@@ -474,9 +475,10 @@ class ResNet(BaseBackbone):
                  deep_stem=False,
                  avg_down=False,
                  frozen_stages=-1,
-                 conv_cfg=None,
-                 norm_cfg=dict(type='BN', requires_grad=True),
+                 conv_cfg=dict(type='Conv2d'),
+                 norm_cfg=dict(type='BN2d', requires_grad=True),
                  norm_eval=False,
+                 feature_Nd="2d",
                  with_cp=False,
                  zero_init_residual=True,
                  drop_path_rate=0.0):
@@ -501,10 +503,12 @@ class ResNet(BaseBackbone):
         self.norm_cfg = norm_cfg
         self.with_cp = with_cp
         self.norm_eval = norm_eval
+        self.feature_Nd = feature_Nd
         self.zero_init_residual = zero_init_residual
         self.block, stage_blocks = self.arch_settings[depth]
         self.stage_blocks = stage_blocks[:num_stages]
         self.expansion = get_expansion(self.block, expansion)
+        assert feature_Nd in ["1d", "2d",]
 
         self._make_stem_layer(in_channels, stem_channels)
 

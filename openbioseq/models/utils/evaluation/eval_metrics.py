@@ -1,7 +1,7 @@
-# Copyright (c) OpenMMLab. All rights reserved.
 from numbers import Number
 
 import numpy as np
+from scipy import stats
 import torch
 from torch.nn.functional import one_hot
 
@@ -295,6 +295,99 @@ def regression_error(pred, target, average_mode='mean'):
         mae /= pred.size(0)
 
     return mse, mae
+
+
+def pearson_correlation(pred, target, average_mode='mean'):
+    """Calculate Pearson Correlation.
+
+    Args:
+        pred (torch.Tensor | np.array): The model prediction with shape (N, \*).
+        target (torch.Tensor | np.array): The target of each prediction with
+            shape (N, \*), which should be normalized.
+        average_mode (str): The type of averaging performed on the result.
+            Options are 'mean' and 'none'. If 'none', the sum of error will be
+            returned. If 'mean', calculate mean of error. Defaults to 'mean'.
+
+    Returns:
+        float: correlation.
+    """
+    allowed_average_mode = ['mean', 'none', None]
+    if average_mode not in allowed_average_mode:
+        raise ValueError(f'Unsupport type of averaging {average_mode}.')
+    
+    if isinstance(pred, np.ndarray):
+        pred = torch.from_numpy(pred)
+    assert isinstance(pred, torch.Tensor), \
+        (f'pred should be torch.Tensor or np.ndarray, but got {type(pred)}.')
+    if isinstance(target, np.ndarray):
+        target = torch.from_numpy(target).long()
+    assert isinstance(target, torch.Tensor), \
+        f'target should be torch.Tensor or np.ndarray, ' \
+        f'but got {type(target)}.'
+    
+    x = pred.view(pred.size(0), -1)
+    y = target.view(target.size(0), -1)
+    vx = x - x.mean()
+    vy = y - y.mean()
+    corr = (vx * vy).sum() / ((vx ** 2).sum().sqrt() * (vy ** 2).sum().sqrt() + 1e-20)
+    if average_mode == 'mean':
+        corr = corr.mean()
+
+    return corr
+
+
+def spearman_correlation(pred, target, average_mode='mean'):
+    """Calculate Spearman Correlation with scipy.
+
+    Args:
+        pred (torch.Tensor | np.array): The model prediction with shape (N, \*).
+        target (torch.Tensor | np.array): The target of each prediction with
+            shape (N, \*), which should be normalized.
+        average_mode (str): The type of averaging performed on the result.
+            Options are 'mean' and 'none'. If 'none', the sum of error will be
+            returned. If 'mean', calculate mean of error. Defaults to 'mean'.
+
+    Returns:
+        float: correlation.
+    """
+    allowed_average_mode = ['mean', 'none', None]
+    if average_mode not in allowed_average_mode:
+        raise ValueError(f'Unsupport type of averaging {average_mode}.')
+    
+    if isinstance(pred, torch.Tensor):
+        pred = pred.cpu().numpy()
+    assert isinstance(pred, np.ndarray), \
+        (f'pred should be torch.Tensor or np.ndarray, but got {type(pred)}.')
+    if isinstance(target, torch.Tensor):
+        target = target.cpu().numpy()
+    assert isinstance(target, np.ndarray), \
+        f'target should be torch.Tensor or np.ndarray, ' \
+        f'but got {type(target)}.'
+
+    # def _get_ranks(x):
+    #     tmp = x.argsort()
+    #     ranks = torch.zeros_like(tmp)
+    #     ranks[tmp] = torch.arange(len(x))
+    #     return ranks
+
+    # if pred.dim() > 1 or target.dim() > 1:
+    #     raise ValueError("Expected both pred and target to be 1 dimensional tensors.")
+    # x_rank = _get_ranks(pred)
+    # y_rank = _get_ranks(target)
+    
+    # n = pred.size(0)
+    # upper = 6 * torch.sum((x_rank - y_rank).pow(2))
+    # down = n * (n ** 2 - 1.0) + 1e-20
+    # corr = 1.0 - (upper / down)
+
+    pred = pred.reshape(pred.shape[0], -1)
+    target = target.reshape(target.shape[0], -1)
+    if average_mode == "mean":
+        corr, _ = stats.spearmanr(pred, target, axis=None)
+    else:
+        corr, _ = stats.spearmanr(pred, target, axis=0)
+
+    return corr
 
 
 def average_precision(pred, target):

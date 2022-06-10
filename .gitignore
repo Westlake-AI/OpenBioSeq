@@ -131,6 +131,7 @@ benchmarks/detection/output
 
 # temp ignore path during updating:
 configs/classification/processed
+configs/regression
 configs/selfsup/processed
 # configs/semisup
 # configs/selfsup

@@ -9,11 +9,11 @@ from ..builder import build_loss
 
 @HEADS.register_module
 class RegHead(nn.Module):
-    """Simplest regression head, with only one fc layer.
+    r"""Simplest regression head, with only one fc layer.
     
     Args:
         with_avg_pool (bool): Whether to use GAP before this head.
-        loss (dict): Config of classification loss.
+        loss (list or dict): Config or List of configs for the regression loss.
         in_channels (int): Number of channels in the input feature map.
         frozen (bool): Whether to freeze the parameters.
     """
@@ -28,14 +28,19 @@ class RegHead(nn.Module):
         self.with_avg_pool = with_avg_pool
         self.in_channels = in_channels
         self.out_channels = out_channels
+        assert loss is None or isinstance(loss, (dict, list))
 
         # loss
-        if loss is not None:
-            assert isinstance(loss, dict)
-            self.criterion = build_loss(loss)
-        else:
-            loss = dict(type='RegressionLoss', loss_weight=1.0, mode="mse_loss")
-            self.criterion = build_loss(loss)
+        if loss is None:
+            loss = [dict(type='RegressionLoss', loss_weight=1.0, mode="mse_loss")]
+        elif isinstance(loss, dict):
+            loss = [loss]
+        self.criterion_num = 0
+        for i in range(len(loss)):
+            assert isinstance(loss[i], dict)
+            _criterion = build_loss(loss[i])
+            self.add_module(str(i), _criterion)
+            self.criterion_num += 1
         # fc layer
         self.fc = nn.Linear(in_channels, out_channels)
         if frozen:
@@ -72,7 +77,7 @@ class RegHead(nn.Module):
         return [x]
 
     def loss(self, score, labels, **kwargs):
-        """" regression loss forward
+        """ regression loss forward
         
         Args:
             score (list): Score should be [tensor] in (N,).
@@ -83,7 +88,12 @@ class RegHead(nn.Module):
         
         # computing loss
         labels = labels.type_as(score[0])
-        losses['loss'] = self.criterion(score[0], labels, **kwargs)
+        _criterion = getattr(self, "0")
+        losses['loss'] = _criterion(score[0], labels, **kwargs)
+        if self.criterion_num > 1:
+            for i in range(1, self.criterion_num):
+                _criterion = getattr(self, str(i))
+                losses['loss'] += _criterion(score[0], labels, **kwargs)
         # compute error
         losses['mse'], _ = regression_error(score[0], labels, average_mode='mean')
         

@@ -14,7 +14,7 @@ model = dict(
         final_norm=False,
         finetune=True),
     head=dict(
-        type='ClsMixupHead',  # mixup CE + label smooth
+        type='MAEFinetuneHead',  # mixup CE + label smooth
         loss=dict(type='LabelSmoothLoss',
             label_smooth_val=0.1, num_classes=1000, mode='original', loss_weight=1.0),
         with_avg_pool=False,  # no gap in ViT

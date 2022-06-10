@@ -3,8 +3,10 @@ import torchvision
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
-from natsort import natsorted
-
+try:
+    from natsort import natsorted
+except:
+    natsorted = None
 
 class PlotTensor:
     """Plot torch tensor as matplotlib figure.

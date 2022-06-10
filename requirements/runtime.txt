@@ -11,4 +11,6 @@ terminaltables
 sklearn
 seaborn
 tensorboard
+transformers
+timm
 tqdm

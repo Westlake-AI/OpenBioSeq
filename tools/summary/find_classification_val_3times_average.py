@@ -45,7 +45,7 @@ def read_json_max(path, print_all=True, keyword=None, **kwargs):
         record_acc[k] = np.array(record_acc[k])
         record_acc[k] = \
             (np.max(record_acc[k]) + np.percentile(record_acc[k], 99)) / 2
-        print_str += "{}: {:.2f},".format(k, record_acc[k])
+        print_str += "{}: {:.3f},".format(k, record_acc[k])
     if print_all:
         print(print_str)
     return record_acc
@@ -97,7 +97,7 @@ if __name__ == '__main__':
             print(cfg)
             print_str = "3 times average --- "
             for k in keyword:
-                _str = "{}={:.2f} ({:.2f}), ".format(k, np.average(np.array(score[k])), np.std(np.array(score[k])))
+                _str = "{}={:.3f} ({:.3f}), ".format(k, np.average(np.array(score[k])), np.std(np.array(score[k])))
                 print_str += _str
             print(print_str)
 

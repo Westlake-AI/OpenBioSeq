@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from mmcv.cnn import build_norm_layer
+from mmcv.cnn.bricks.drop import build_dropout
 from mmcv.cnn.bricks.transformer import FFN, PatchEmbed
 from mmcv.cnn.utils.weight_init import constant_init, trunc_normal_init, \
                                        uniform_init, xavier_init
@@ -15,7 +16,7 @@ from mmcv.runner.base_module import BaseModule, ModuleList
 from mmcv.utils.parrots_wrapper import _BatchNorm
 
 from openbioseq.utils import get_root_logger, print_log
-from ..utils import MultiheadAttention, to_2tuple, \
+from ..utils import MultiheadAttention, MultiheadAttentionWithRPE, to_2tuple, \
                     resize_pos_embed, build_2d_sincos_position_embedding
 from ..builder import BACKBONES
 from .base_backbone import BaseBackbone
@@ -40,6 +41,7 @@ class TransformerEncoderLayer(BaseModule):
             Defaluts to ``dict(type='GELU')``.
         norm_cfg (dict): Config dict for normalization layer.
             Defaults to ``dict(type='LN')``.
+        init_values (float): The init values of gamma. Defaults to 0.0.
         init_cfg (dict, optional): Initialization config dict (removed!).
             Defaults to None.
     """
@@ -48,6 +50,7 @@ class TransformerEncoderLayer(BaseModule):
                  embed_dims,
                  num_heads,
                  feedforward_channels,
+                 window_size=None,
                  drop_rate=0.,
                  attn_drop_rate=0.,
                  drop_path_rate=0.,
@@ -55,6 +58,7 @@ class TransformerEncoderLayer(BaseModule):
                  qkv_bias=True,
                  act_cfg=dict(type='GELU'),
                  norm_cfg=dict(type='LN'),
+                 init_values=0,
                  init_cfg=None,
                  **kwargs):
         super(TransformerEncoderLayer, self).__init__(init_cfg)
@@ -65,13 +69,23 @@ class TransformerEncoderLayer(BaseModule):
             norm_cfg, self.embed_dims, postfix=1)
         self.add_module(self.norm1_name, norm1)
 
-        self.attn = MultiheadAttention(
-            embed_dims=embed_dims,
-            num_heads=num_heads,
-            attn_drop=attn_drop_rate,
-            proj_drop=drop_rate,
-            dropout_layer=dict(type='DropPath', drop_prob=drop_path_rate),
-            qkv_bias=qkv_bias)
+        if window_size is None:
+            # attention without relative position bias
+            self.attn = MultiheadAttention(
+                embed_dims=embed_dims,
+                num_heads=num_heads,
+                attn_drop=attn_drop_rate,
+                proj_drop=drop_rate,
+                qkv_bias=qkv_bias)
+        else:
+            # attention with relative position bias
+            self.attn = MultiheadAttentionWithRPE(
+                embed_dims=embed_dims,
+                num_heads=num_heads,
+                window_size=window_size,
+                attn_drop=attn_drop_rate,
+                proj_drop=drop_rate,
+                qkv_bias=qkv_bias)
 
         self.norm2_name, norm2 = build_norm_layer(
             norm_cfg, self.embed_dims, postfix=2)
@@ -82,8 +96,20 @@ class TransformerEncoderLayer(BaseModule):
             feedforward_channels=feedforward_channels,
             num_fcs=num_fcs,
             ffn_drop=drop_rate,
-            dropout_layer=dict(type='DropPath', drop_prob=drop_path_rate),
-            act_cfg=act_cfg)
+            dropout_layer=None,
+            act_cfg=act_cfg,
+            add_identity=False)
+
+        self.drop_path = build_dropout(
+            dict(type='DropPath', drop_prob=drop_path_rate))
+
+        if init_values > 0:
+            self.gamma_1 = nn.Parameter(
+                init_values * torch.ones((embed_dims)), requires_grad=True)
+            self.gamma_2 = nn.Parameter(
+                init_values * torch.ones((embed_dims)), requires_grad=True)
+        else:
+            self.gamma_1, self.gamma_2 = None, None
 
     @property
     def norm1(self):
@@ -108,8 +134,12 @@ class TransformerEncoderLayer(BaseModule):
                 nn.init.normal_(m.bias, std=1e-6)
 
     def forward(self, x):
-        x = x + self.attn(self.norm1(x))
-        x = self.ffn(self.norm2(x), identity=x)
+        if self.gamma_1 is not None:
+            x = x + self.drop_path(self.gamma_1 * self.attn(self.norm1(x)))
+            x = x + self.drop_path(self.gamma_2 * self.ffn(self.norm2(x)))
+        else:
+            x = x + self.drop_path(self.attn(self.norm1(x)))
+            x = x + self.drop_path(self.ffn(self.norm2(x)))
         return x
 
 
@@ -154,6 +184,8 @@ class VisionTransformer(BaseBackbone):
             ``with_cls_token`` must be True. Defaults to True.
         interpolate_mode (str): Select the interpolate mode for position
             embeding vector resize. Defaults to "bicubic".
+        init_values (float, optional): The init value of gamma in
+            TransformerEncoderLayer. Defaults to 0.
         patch_cfg (dict): Configs of patch embeding. Defaults to an empty dict.
         layer_cfgs (Sequence | dict): Configs of each transformer layer in
             encoder. Defaults to an empty dict.
@@ -218,6 +250,7 @@ class VisionTransformer(BaseBackbone):
                  patch_size=16,
                  in_channels=3,
                  out_indices=-1,
+                 use_window=False,
                  drop_rate=0.,
                  drop_path_rate=0.,
                  qkv_bias=True,
@@ -226,6 +259,7 @@ class VisionTransformer(BaseBackbone):
                  with_cls_token=True,
                  output_cls_token=True,
                  interpolate_mode='bicubic',
+                 init_values=0.0,
                  patch_cfg=dict(),
                  layer_cfgs=dict(),
                  stop_grad_conv1=False,
@@ -311,8 +345,10 @@ class VisionTransformer(BaseBackbone):
                 embed_dims=self.embed_dims,
                 num_heads=self.arch_settings['num_heads'],
                 feedforward_channels=self.arch_settings['feedforward_channels'],
+                window_size=self.patch_resolution if use_window else None,
                 drop_rate=drop_rate,
                 drop_path_rate=dpr[i],
+                init_values=init_values,
                 qkv_bias=qkv_bias,
                 norm_cfg=norm_cfg)
             _layer_cfg.update(layer_cfgs[i])

@@ -10,12 +10,12 @@ from ..utils import PlotTensor
 
 @MODELS.register_module
 class Classification(BaseModel):
-    """Simple image classification.
+    """Simple supervised classification or regression.
 
     Args:
-        backbone (dict): Config dict for module of backbone ConvNet.
-        neck (dict): Config dict for module of deep features to compact feature vectors.
-            Default: None.
+        backbone (dict): Config dict for module of backbone.
+        neck (dict): Config dict for module of deep features to compact feature
+            vectors. Default: None.
         head (dict): Config dict for module of loss functions. Default: None.
         pretrained (str, optional): Path to pre-trained weights. Default: None.
     """
@@ -91,12 +91,6 @@ class Classification(BaseModel):
     
     def plot_latent(self, data, latent, target=None, mode="channel-mean"):
         """ visualize latent space """
-        # save current
-        # for i in range(len(latent)):
-        #     latent[i] = latent[i].detach().cpu()
-        # torch.save(
-        #     dict(data=data.detach().cpu(), latent=latent, target=target.detach().cpu()),
-        #     self.save_name.replace(".png", ".pt"))
 
         nrow = 4 if target is None else int(target.max().detach().cpu().numpy())
         # nrow = 100
@@ -134,7 +128,6 @@ class Classification(BaseModel):
         elif mode == "channel-mean":
             if target is not None:
                 for i in range(data.size(0)):
-                    # data_dict['data'][str(target[i]) + "CM"] = data[i, 0, ...].detach().cpu().numpy()
                     data_dict['data'][str(target[i])] = data[i, 0, ...].detach().cpu().numpy()
             else:
                 data_dict['data']["channel_mean"] = data[0, 0, ...].detach().cpu().numpy()
@@ -142,7 +135,6 @@ class Classification(BaseModel):
                 data_dict["latent_space_"+str(i)] = dict()
                 if target is not None:
                     for j in range(data.size(0)):
-                        # data_dict["latent_space_"+str(i)][str(target[j]) + "CM"] = \
                         data_dict["latent_space_"+str(i)][str(target[j])] = \
                             latent[i][j, 0, ...].detach().cpu().numpy()
                 else:

@@ -11,6 +11,12 @@ class ImageList(object):
     The `ImageList` can load an annotation file or a list of files and merge
     all data records to one list. If data is unlabeled, the gt_label will be
     set -1.
+
+    Args:
+        root (str): Root of image dataset.
+        list_file (str): Path to the list file.
+        splitor (str): Split each seqence in the data.
+        return_label (bool): Whether to return supervised labels.
     """
 
     CLASSES = None
@@ -20,8 +26,9 @@ class ImageList(object):
                  list_file,
                  splitor=" ",
                  return_label=True):
-        with open(list_file, 'r') as f:
-            lines = f.readlines()
+        with open(list_file, 'r') as fp:
+            lines = fp.readlines()
+        fp.close()
         assert splitor in [" ", ",", ";"]
         self.has_labels = len(lines[0].split(splitor)) == 2
         self.return_label = return_label

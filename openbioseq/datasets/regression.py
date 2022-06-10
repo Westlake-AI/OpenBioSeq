@@ -1,6 +1,7 @@
 import torch
 
-from openbioseq.models.utils import regression_error
+from openbioseq.models.utils import (pearson_correlation, \
+                                     spearman_correlation, regression_error)
 from openbioseq.utils import print_log
 
 from .registry import DATASETS
@@ -58,7 +59,7 @@ class RegressionDataset(BaseDataset):
             metrics = metric
         eval_res = {}
         eval_log = []
-        allowed_metrics = ['mse', 'mae',]
+        allowed_metrics = ['mse', 'mae', 'pearson', 'spearman',]
         average_mode = metric_options.get('average_mode', 'mean')
         invalid_metrics = set(metrics) - set(allowed_metrics)
         if len(invalid_metrics) != 0:
@@ -78,6 +79,14 @@ class RegressionDataset(BaseDataset):
         if 'mae' in metrics:
             eval_res[f"{keyword}_mae"] = float(mae)
             eval_log.append("{}_mae: {:.03f}".format(keyword, float(mae)))
+        if 'pearson' in metrics:
+            p_corr = pearson_correlation(scores, target, average_mode=average_mode)
+            eval_res[f"{keyword}_pearson"] = float(p_corr)
+            eval_log.append("{}_pearson: {:.03f}".format(keyword, float(p_corr)))
+        if 'spearman' in metrics:
+            s_corr = spearman_correlation(scores, target, average_mode=average_mode)
+            eval_res[f"{keyword}_spearman"] = float(s_corr)
+            eval_log.append("{}_spearman: {:.03f}".format(keyword, float(s_corr)))
         
         if logger is not None and logger != 'silent':
             for _log in eval_log:

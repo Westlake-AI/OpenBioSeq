@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import cv2
 from torch.nn.functional import interpolate
-from openmixup.models.utils import batch_shuffle_ddp
+from openbioseq.models.utils import batch_shuffle_ddp
 
 
 @torch.no_grad()
