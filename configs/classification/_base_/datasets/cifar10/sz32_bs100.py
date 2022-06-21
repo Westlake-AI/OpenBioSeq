@@ -2,7 +2,7 @@
 data_source_cfg = dict(type='CIFAR10', root='data/cifar10/')
 
 dataset_type = 'ClassificationDataset'
-img_norm_cfg = dict(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.201])
+sample_norm_cfg = dict(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.201])
 train_pipeline = [
     dict(type='RandomCrop', size=32, padding=4),
     dict(type='RandomHorizontalFlip'),
@@ -11,11 +11,11 @@ test_pipeline = []
 # prefetch
 prefetch = True
 if not prefetch:
-    train_pipeline.extend([dict(type='ToTensor'), dict(type='Normalize', **img_norm_cfg)])
-test_pipeline.extend([dict(type='ToTensor'), dict(type='Normalize', **img_norm_cfg)])
+    train_pipeline.extend([dict(type='ToTensor'), dict(type='Normalize', **sample_norm_cfg)])
+test_pipeline.extend([dict(type='ToTensor'), dict(type='Normalize', **sample_norm_cfg)])
 
 data = dict(
-    imgs_per_gpu=100,  # 100 x 1gpu = 100
+    samples_per_gpu=100,  # 100 x 1gpu = 100
     workers_per_gpu=4,
     train=dict(
         type=dataset_type,
@@ -32,11 +32,15 @@ data = dict(
 
 # validation hook
 evaluation = dict(
-    initial=False,
+    initial=True,
     interval=1,
-    imgs_per_gpu=100,
+    samples_per_gpu=128,
     workers_per_gpu=4,
-    eval_param=dict(topk=(1, 5)))
+    eval_param=dict(
+        metric=['accuracy',],
+        metric_options=dict(topk=(1,5,), average_mode='macro')
+    ),
+)
 
 # checkpoint
 checkpoint_config = dict(interval=10, max_keep_ckpts=1)

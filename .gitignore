@@ -130,8 +130,10 @@ benchmarks/detection/datasets
 benchmarks/detection/output
 
 # temp ignore path during updating:
+configs/benchmarks/classification_IP53
 configs/classification/processed
-configs/regression
+configs/classification/imagenet
+configs/regression_IP53
 configs/selfsup/processed
 # configs/semisup
 # configs/selfsup

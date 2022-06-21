@@ -849,7 +849,8 @@ class PatchEmbed1d(BaseModule):
                  norm_cfg=None,
                  act_cfg=None,
                  input_size=None,
-                 init_cfg=None):
+                 init_cfg=None,
+                 **kwargs):
         super(PatchEmbed1d, self).__init__(init_cfg)
         
         self.embed_dims = embed_dims

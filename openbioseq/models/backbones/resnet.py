@@ -1,6 +1,7 @@
 # reference: https://github.com/open-mmlab/mmclassification/tree/master/mmcls/models/backbones
 # modified from mmclassification resnet.py, resnet_cifar.py
 import random
+import torch
 import torch.nn as nn
 import torch.utils.checkpoint as cp
 from mmcv.cnn import (ConvModule, build_conv_layer, build_norm_layer,
@@ -34,8 +35,8 @@ class BasicBlock(nn.Module):
             Default: None
         norm_cfg (dict): dictionary to construct and config norm layer.
             Default: dict(type='BN')
-        drop_path_rate (float): Additional DropPath in residual_block RSB A1/A2.
-            Default to 0.
+        drop_path_rate (float): Additional Stochastic DropPath in each basic_block
+            for RSB A1/A2. Default to 0.
     """
 
     def __init__(self,
@@ -153,8 +154,8 @@ class Bottleneck(nn.Module):
             Default: None
         norm_cfg (dict): dictionary to construct and config norm layer.
             Default: dict(type='BN')
-        drop_path_rate (float): Additional DropPath in residual_block RSB A1/A2.
-            Default to 0.
+        drop_path_rate (float): Additional Stochastic DropPath in each residual_block
+            for RSB A1/A2. Default to 0.
     """
 
     def __init__(self,
@@ -331,7 +332,9 @@ class ResLayer(nn.Sequential):
         conv_cfg (dict): dictionary to construct and config conv layer.
             Default: None
         norm_cfg (dict): dictionary to construct and config norm layer.
-            Default: dict(type='BN')
+            Default: dict(type='BN').
+        drop_path_rate (float | list): Additional Stochastic DropPath in each
+            block for RSB A1/A2. Default to 0.
     """
 
     def __init__(self,
@@ -343,7 +346,8 @@ class ResLayer(nn.Sequential):
                  stride=1,
                  avg_down=False,
                  conv_cfg=None,
-                 norm_cfg=dict(type='BN2d'),
+                 norm_cfg=dict(type='BN'),
+                 drop_path_rate=0.0,
                  **kwargs):
         self.block = block
         self.expansion = get_expansion(block, expansion)
@@ -372,6 +376,9 @@ class ResLayer(nn.Sequential):
             ])
             downsample = nn.Sequential(*downsample)
 
+        if isinstance(drop_path_rate, float):
+            drop_path_rate = [drop_path_rate for _ in range(num_blocks)]
+
         layers = []
         layers.append(
             block(
@@ -382,9 +389,10 @@ class ResLayer(nn.Sequential):
                 downsample=downsample,
                 conv_cfg=conv_cfg,
                 norm_cfg=norm_cfg,
+                drop_path_rate=drop_path_rate[0],
                 **kwargs))
         in_channels = out_channels
-        for _ in range(1, num_blocks):
+        for i in range(1, num_blocks):
             layers.append(
                 block(
                     in_channels=in_channels,
@@ -393,6 +401,7 @@ class ResLayer(nn.Sequential):
                     stride=1,
                     conv_cfg=conv_cfg,
                     norm_cfg=norm_cfg,
+                    drop_path_rate=drop_path_rate[i],
                     **kwargs))
         super(ResLayer, self).__init__(*layers)
 
@@ -475,8 +484,8 @@ class ResNet(BaseBackbone):
                  deep_stem=False,
                  avg_down=False,
                  frozen_stages=-1,
-                 conv_cfg=dict(type='Conv2d'),
-                 norm_cfg=dict(type='BN2d', requires_grad=True),
+                 conv_cfg=None,
+                 norm_cfg=dict(type='BN', requires_grad=True),
                  norm_eval=False,
                  feature_Nd="2d",
                  with_cp=False,
@@ -512,6 +521,12 @@ class ResNet(BaseBackbone):
 
         self._make_stem_layer(in_channels, stem_channels)
 
+        # stochastic depth
+        total_block = sum(self.stage_blocks)
+        block_dpr = [
+            x.item() for x in torch.linspace(0, drop_path_rate, total_block)
+        ]  # stochastic depth linear decay rule
+
         self.res_layers = []
         _in_channels = stem_channels
         _out_channels = base_channels * self.expansion
@@ -531,10 +546,11 @@ class ResNet(BaseBackbone):
                 with_cp=with_cp,
                 conv_cfg=conv_cfg,
                 norm_cfg=norm_cfg,
-                drop_path_rate=drop_path_rate)
+                drop_path_rate=block_dpr[:num_blocks])
             _in_channels = _out_channels
             _out_channels *= 2
             layer_name = f'layer{i + 1}'
+            block_dpr = block_dpr[num_blocks:]
             self.add_module(layer_name, res_layer)
             self.res_layers.append(layer_name)
 
@@ -664,6 +680,22 @@ class ResNet(BaseBackbone):
                 # trick: eval have effect on BatchNorm only
                 if isinstance(m, (_BatchNorm, nn.SyncBatchNorm)):
                     m.eval()
+
+
+@BACKBONES.register_module()
+class ResNetV1d(ResNet):
+    """ResNetV1d variant described in
+    `Bag of Tricks <https://arxiv.org/pdf/1812.01187.pdf>`_.
+
+    Compared with default ResNet(ResNetV1b), ResNetV1d replaces the 7x7 conv
+    in the input stem with three 3x3 convs. And in the downsampling block,
+    a 2x2 avg_pool with stride 2 is added before conv, whose stride is
+    changed to 1.
+    """
+
+    def __init__(self, **kwargs):
+        super(ResNetV1d, self).__init__(
+            deep_stem=True, avg_down=True, **kwargs)
 
 
 @BACKBONES.register_module()

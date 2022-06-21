@@ -7,7 +7,7 @@
 
 ## Introduction
 
-The master branch works with **PyTorch 1.8** or higher.
+The main branch works with **PyTorch 1.8** or higher.
 
 `OpenBioSeq` is an open-source supervised and self-supervised bio-sequence representation learning toolbox based on PyTorch. `OpenBioSeq` supports popular backbones, pre-training methods, and various features.
 
@@ -52,7 +52,7 @@ If you find this project useful in your research, please consider cite:
 ```BibTeX
 @misc{2022openbioseq,
     title={{OpenBioSeq}: Open Toolbox and Benchmark for Bio-sequence Representation Learning},
-    author={Li, Siyuan and Liu, Zichen},
+    author={Li, Siyuan and Liu, Zichen and Wu, Di and Stan Z. Li},
     howpublished = {\url{https://github.com/Westlake-AI/openbioseq}},
     year={2022}
 }

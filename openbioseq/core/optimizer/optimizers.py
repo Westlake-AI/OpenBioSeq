@@ -120,7 +120,7 @@ class LARS(Optimizer):
         return loss
 
 
-# @OPTIMIZERS.register_module()
+@OPTIMIZERS.register_module()
 class LAMB(Optimizer):
     r"""Implements a pure pytorch variant of FuseLAMB (NvLamb variant) optimizer
     from apex.optimizers.FusedLAMB

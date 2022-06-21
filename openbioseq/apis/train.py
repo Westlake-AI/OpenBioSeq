@@ -3,13 +3,14 @@ import warnings
 
 import numpy as np
 import torch
+import torch.distributed as dist
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
-from mmcv.runner import build_runner, DistSamplerSeedHook
+from mmcv.runner import build_runner, DistSamplerSeedHook, get_dist_info
 
 from openbioseq.datasets import build_dataloader
 from openbioseq.core.hooks import (build_hook, build_addtional_scheduler, build_optimizer,
                              DistOptimizerHook, Fp16OptimizerHook)
-from openbioseq.utils import get_root_logger, print_log
+from openbioseq.utils import find_latest_checkpoint, get_root_logger, print_log
 
 # import fp16 supports
 try:
@@ -19,6 +20,37 @@ except ImportError:
     default_fp16 = 'mmcv'
     warnings.warn('DeprecationWarning: Nvidia Apex is not installed, '
                   'using FP16OptimizerHook modified from mmcv.')
+
+
+def init_random_seed(seed=None, device='cuda'):
+    """Initialize random seed.
+
+    If the seed is not set, the seed will be automatically randomized,
+    and then broadcast to all processes to prevent some potential bugs.
+    Args:
+        seed (int, Optional): The seed. Default to None.
+        device (str): The device where the seed will be put on.
+            Default to 'cuda'.
+    Returns:
+        int: Seed to be used.
+    """
+    if seed is not None:
+        return seed
+
+    # Make sure all ranks share the same random seed to prevent
+    # some potential bugs. Please refer to
+    # https://github.com/open-mmlab/mmdetection/issues/6339
+    rank, world_size = get_dist_info()
+    seed = np.random.randint(2**31)
+    if world_size == 1:
+        return seed
+
+    if rank == 0:
+        random_num = torch.tensor(seed, dtype=torch.int32, device=device)
+    else:
+        random_num = torch.tensor(0, dtype=torch.int32, device=device)
+    dist.broadcast(random_num, src=0)
+    return random_num.item()
 
 
 def set_random_seed(seed, deterministic=False):
@@ -58,7 +90,7 @@ def train_model(model,
             # `num_gpus` will be ignored if distributed
             num_gpus=cfg.gpus,
             dist=distributed,
-            sampler=cfg.sampler,
+            sampler=getattr(cfg, 'sampler', 'DistributedSampler'),
             shuffle=True,
             replace=getattr(cfg.data, 'sampling_replace', False),
             seed=cfg.seed,
@@ -166,9 +198,16 @@ def train_model(model,
         # executed after `IterTimerHook`, or it will cause a bug if use `IterBasedRunner`.
         runner.register_hook(build_hook(eval_cfg), priority='LOW')
 
+    resume_from = None
+    if cfg.resume_from is None and cfg.get('auto_resume'):
+        resume_from = find_latest_checkpoint(cfg.work_dir)
+    if resume_from is not None:
+        cfg.resume_from = resume_from
+    
     if cfg.resume_from:
         runner.resume(cfg.resume_from)
     elif cfg.load_from:
         runner.load_checkpoint(cfg.load_from)
+    
     cfg.workflow = [tuple(x) for x in cfg.workflow]
     runner.run(data_loaders, cfg.workflow)

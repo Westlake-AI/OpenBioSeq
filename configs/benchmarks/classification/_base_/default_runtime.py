@@ -1,12 +1,9 @@
-# datasets
-sampler = 'DistributedSampler'
-
 train_cfg = {}
 test_cfg = {}
 optimizer_config = dict()  # grad_clip, coalesce, bucket_size_mb
 # yapf:disable
 log_config = dict(
-    interval=50,
+    interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
         # dict(type='TensorboardLoggerHook')

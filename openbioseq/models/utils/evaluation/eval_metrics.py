@@ -364,22 +364,6 @@ def spearman_correlation(pred, target, average_mode='mean'):
         f'target should be torch.Tensor or np.ndarray, ' \
         f'but got {type(target)}.'
 
-    # def _get_ranks(x):
-    #     tmp = x.argsort()
-    #     ranks = torch.zeros_like(tmp)
-    #     ranks[tmp] = torch.arange(len(x))
-    #     return ranks
-
-    # if pred.dim() > 1 or target.dim() > 1:
-    #     raise ValueError("Expected both pred and target to be 1 dimensional tensors.")
-    # x_rank = _get_ranks(pred)
-    # y_rank = _get_ranks(target)
-    
-    # n = pred.size(0)
-    # upper = 6 * torch.sum((x_rank - y_rank).pow(2))
-    # down = n * (n ** 2 - 1.0) + 1e-20
-    # corr = 1.0 - (upper / down)
-
     pred = pred.reshape(pred.shape[0], -1)
     target = target.reshape(target.shape[0], -1)
     if average_mode == "mean":

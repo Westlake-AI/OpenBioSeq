@@ -26,9 +26,8 @@ class ImageList(object):
                  list_file,
                  splitor=" ",
                  return_label=True):
-        with open(list_file, 'r') as fp:
-            lines = fp.readlines()
-        fp.close()
+        fp = open(list_file, 'r')
+        lines = fp.readlines()
         assert splitor in [" ", ",", ";"]
         self.has_labels = len(lines[0].split(splitor)) == 2
         self.return_label = return_label

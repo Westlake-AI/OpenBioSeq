@@ -36,15 +36,15 @@ optimizer = dict(
 # learning policy
 lr_config = dict(
     policy='StepFixCosineAnnealing',
-    min_lr=1e-6,
+    min_lr=5e-6,  # try
     warmup='linear',
     warmup_iters=20,  # SimMIM
-    warmup_ratio=1e-6,
+    warmup_ratio=5e-6,  # try
     warmup_by_epoch=True,
     by_epoch=False)
 
 # apex
-use_fp16 = True
+use_fp16 = False  # try
 fp16 = dict(type='apex', loss_scale=dict(init_scale=512., mode='dynamic'))
 # optimizer args
 optimizer_config = dict(

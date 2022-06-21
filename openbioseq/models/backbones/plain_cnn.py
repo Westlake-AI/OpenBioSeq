@@ -123,6 +123,7 @@ class PlainCNN(BaseBackbone):
             self.plain_layers.append(layer_name)
 
         self.init_weights(pretrained=pretrained)
+        self._freeze_stages()
     
     def init_weights(self, pretrained=None):
         super(PlainCNN, self).init_weights(pretrained)
@@ -134,7 +135,7 @@ class PlainCNN(BaseBackbone):
 
     def _freeze_stages(self):
         if self.frozen_stages >= 0:
-            for m in self.stem:
+            for m in self.stem.modules():
                 for param in m.parameters():
                     param.requires_grad = False
         for i in range(1, self.frozen_stages + 1):

@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from PIL import Image
 import mmcv
 import numpy as np
+import pickle
 import torch
 import torchvision
 
@@ -46,3 +47,20 @@ def to_tensor(data):
             f'Type {type(data)} cannot be converted to tensor.'
             'Supported types are: `numpy.ndarray`, `torch.Tensor`, '
             '`Sequence`, `int` and `float`')
+
+
+def read_file(filename, encoding=None):
+    """Load list/tabular data from the file.
+
+    Supported file types: 'txt', 'npy', '' (binary encoded file).
+    """
+    if filename.split(".")[-1] == "txt":
+        fp = open(filename, 'r', encoding=encoding)
+        lines = fp.readlines()
+    elif filename.split(".")[-1] == "npy":
+        lines = np.load(filename)
+    else:
+        fp = open(filename, 'rb')
+        lines = pickle.load(fp)
+    assert isinstance(lines, list) and len(lines) > 0
+    return lines
