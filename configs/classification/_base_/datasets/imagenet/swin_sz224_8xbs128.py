@@ -28,9 +28,6 @@ data_train_list = 'data/meta/ImageNet/train_labeled_full.txt'
 data_train_root = 'data/ImageNet/train'
 data_test_list = 'data/meta/ImageNet/val_labeled.txt'
 data_test_root = 'data/ImageNet/val/'
-# Notice: Though official DeiT settings use `RepeatAugment`, we achieve competitive performances
-#   without it. This repo removes `RepeatAugment`.
-sampler = "DistributedSampler"
 
 dataset_type = 'ClassificationDataset'
 sample_norm_cfg = dict(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -44,7 +41,7 @@ train_pipeline = [
         hparams=dict(
             pad_val=[104, 116, 124], interpolation='bicubic')),
     dict(
-        type='RandomErasing_numpy',  # before ToTensor and Normalize
+        type='RandomErasing',  # before ToTensor and Normalize
         erase_prob=0.25,
         mode='rand', min_area_ratio=0.02, max_area_ratio=1 / 3,
         fill_color=[104, 116, 124], fill_std=[58, 57, 57]),  # RGB
@@ -81,7 +78,7 @@ data = dict(
 
 # validation hook
 evaluation = dict(
-    initial=True,
+    initial=False,
     interval=1,
     samples_per_gpu=128,
     workers_per_gpu=4,

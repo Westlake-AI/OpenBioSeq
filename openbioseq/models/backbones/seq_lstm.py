@@ -126,6 +126,8 @@ class SequenceLSTM(BaseBackbone):
         super(SequenceLSTM, self).init_weights(pretrained)
 
         if pretrained is None:
+            if self.init_cfg is not None:
+                return
             for m in self.modules():
                 if isinstance(m, (nn.Conv1d, nn.Linear)):
                     trunc_normal_init(m, std=0.02, bias=0)

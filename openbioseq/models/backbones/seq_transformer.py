@@ -289,12 +289,13 @@ class SequenceTransformer(BaseBackbone):
 
         if pretrained is None:
             if "mocov3" not in self.arch:  # normal ViT
-                for m in self.modules():
-                    if isinstance(m, (nn.Conv1d, nn.Linear)):
-                        trunc_normal_init(m, std=0.02, bias=0)
-                    elif isinstance(m, (
-                        nn.LayerNorm, _BatchNorm, nn.GroupNorm, nn.SyncBatchNorm)):
-                        constant_init(m, val=1, bias=0)
+                if self.init_cfg is None:
+                    for m in self.modules():
+                        if isinstance(m, (nn.Conv1d, nn.Linear)):
+                            trunc_normal_init(m, std=0.02, bias=0)
+                        elif isinstance(m, (
+                            nn.LayerNorm, _BatchNorm, nn.GroupNorm, nn.SyncBatchNorm)):
+                            constant_init(m, val=1, bias=0)
                 # pos_embed & cls_token
                 if not self.fix_pos_embed:
                     nn.init.trunc_normal_(self.pos_embed, mean=0, std=.02)

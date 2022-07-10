@@ -1,3 +1,4 @@
+from .barlowtwins import BarlowTwins
 from .byol import BYOL
 from .deepcluster import DeepCluster
 from .mae import MAE
@@ -10,6 +11,6 @@ from .simsiam import SimSiam
 from .swav import SwAV
 
 __all__ = [
-    'BYOL', 'DeepCluster', 'MAE', 'MOCO',
+    'BarlowTwins', 'BYOL', 'DeepCluster', 'MAE', 'MOCO',
     'MoCoV3', 'NPID', 'ODC', 'SimCLR', 'SimSiam', 'SwAV',
 ]

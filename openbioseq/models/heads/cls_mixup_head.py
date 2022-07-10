@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from builtins import NotImplementedError
 from mmcv.cnn import kaiming_init, normal_init, trunc_normal_init
+from mmcv.runner import BaseModule
 
 from ..utils import accuracy, accuracy_mixup
 from ..registry import HEADS
@@ -10,7 +11,7 @@ from ..builder import build_loss
 
 
 @HEADS.register_module
-class ClsMixupHead(nn.Module):
+class ClsMixupHead(BaseModule):
     """Simplest classifier head, with only one fc layer.
        *** Mixup and multi-label classification are supported ***
        V1218, IP89, fix 'neg_weight' and 'eta_weight' usages
@@ -58,7 +59,8 @@ class ClsMixupHead(nn.Module):
                  lam_idx=1,
                  eta_weight=dict(eta=0, mode="both", thr=0.5),
                  neg_weight=1,
-                 frozen=False):
+                 frozen=False,
+                 init_cfg=None):
         super(ClsMixupHead, self).__init__()
         self.with_avg_pool = bool(with_avg_pool)
         self.in_channels = int(in_channels)
@@ -100,6 +102,10 @@ class ClsMixupHead(nn.Module):
             param.requires_grad = False
 
     def init_weights(self, init_linear='normal', std=0.01, bias=0.):
+        super(ClsMixupHead, self).init_weights()
+
+        if self.init_cfg is not None:
+            return
         assert init_linear in ['normal', 'kaiming', 'trunc_normal'], \
             "Undefined init_linear: {}".format(init_linear)
         for m in self.modules():
@@ -165,9 +171,8 @@ class ClsMixupHead(nn.Module):
             single_label = \
                 labels.dim() == 1 or (labels.dim() == 2 and labels.shape[1] == 1)
             # Notice: we allow the single-label cls using multi-label loss, thus
-            # * For single-label cls, loss = loss.sum() / N
-            # * For multi-label cls, loss = loss.sum() or loss.mean()
-            avg_factor = labels.size(0) if single_label else None
+            # * For single-label or multi-label cls, loss = loss.sum() / N
+            avg_factor = labels.size(0)
 
             target = labels.clone()
             if self.multi_label:
@@ -188,9 +193,8 @@ class ClsMixupHead(nn.Module):
             single_label = \
                 y_a.dim() == 1 or (y_a.dim() == 2 and y_a.shape[1] == 1)
             # Notice: we allow the single-label cls using multi-label loss, thus
-            # * For single-label cls, loss = loss.sum() / N
-            # * For multi-label cls, loss = loss.sum() or loss.mean()
-            avg_factor = y_a.size(0) if single_label else None
+            # * For single-label or multi-label cls, loss = loss.sum() / N
+            avg_factor = y_a.size(0)
             
             # 2.1 mixup (hard ce) cls (using softmax)
             if not self.multi_label:
@@ -244,6 +248,7 @@ class ClsMixupHead(nn.Module):
                                     use_eta_weight[i] = self.eta_weight["eta"]
                                 assert use_eta_weight[0] > 0 or use_eta_weight[1] > 0, \
                                     "one of eta should be non-zero, lam={}, lam_={}".format(lam, 1-lam)
+                
                 # rescale the sum of labels, each hot <= 1
                 if self.two_hot_scale < 1:
                     y_mixed = (y_mixed * self.two_hot_scale).clamp(max=1)
@@ -258,4 +263,5 @@ class ClsMixupHead(nn.Module):
             # compute accuracy
             losses['acc'] = accuracy(cls_score[0], labels[0])
             losses['acc_mix'] = accuracy_mixup(cls_score[0], labels)
+        
         return losses

@@ -74,7 +74,7 @@ class VisionTransformerClsHead(BaseModule):
             lecun_normal_init(
                 self.layers.pre_logits,
                 mode='fan_in', distribution='truncated_normal')
-    
+
     def pre_logits(self, x):
         if isinstance(x, tuple):
             x = x[-1]
@@ -84,7 +84,7 @@ class VisionTransformerClsHead(BaseModule):
         else:
             x = self.layers.pre_logits(cls_token)
             return self.layers.act(x)
-    
+
     def frozen(self):
         self.layers.eval()
         for param in self.layers.parameters():
@@ -114,9 +114,8 @@ class VisionTransformerClsHead(BaseModule):
             single_label = \
                 labels.dim() == 1 or (labels.dim() == 2 and labels.shape[1] == 1)
             # Notice: we allow the single-label cls using multi-label loss, thus
-            # * For single-label cls, loss = loss.sum() / N
-            # * For multi-label cls, loss = loss.sum() or loss.mean()
-            avg_factor = labels.size(0) if single_label else None
+            # * For single-label or multi-label cls, loss = loss.sum() / N
+            avg_factor = labels.size(0)
 
             target = labels.clone()
             if self.multi_label:
@@ -137,9 +136,8 @@ class VisionTransformerClsHead(BaseModule):
             single_label = \
                 y_a.dim() == 1 or (y_a.dim() == 2 and y_a.shape[1] == 1)
             # Notice: we allow the single-label cls using multi-label loss, thus
-            # * For single-label cls, loss = loss.sum() / N
-            # * For multi-label cls, loss = loss.sum() or loss.mean()
-            avg_factor = y_a.size(0) if single_label else None
+            # * For single-label or multi-label cls, loss = loss.sum() / N
+            avg_factor = y_a.size(0)
 
             if not self.multi_label:
                 losses['loss'] = \
@@ -157,4 +155,5 @@ class VisionTransformerClsHead(BaseModule):
             # compute accuracy
             losses['acc'] = accuracy(cls_score[0], labels[0])
             losses['acc_mix'] = accuracy_mixup(cls_score[0], labels)
+        
         return losses

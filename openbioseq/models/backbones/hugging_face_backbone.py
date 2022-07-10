@@ -9,7 +9,7 @@ from mmcv.cnn import build_norm_layer
 from mmcv.cnn.utils.weight_init import trunc_normal_init
 
 from openbioseq.utils import get_root_logger, print_log
-from openbioseq.models.utils import resize_pos_embed, PatchEmbed, PatchEmbed1d
+from openbioseq.models.utils import resize_pos_embed
 from ..builder import BACKBONES
 from .base_backbone import BaseBackbone
 
@@ -149,6 +149,8 @@ class HuggingFaceBackbone(BaseBackbone):
         super(HuggingFaceBackbone, self).init_weights(pretrained)
 
         if pretrained is None:
+            if self.init_cfg is not None:
+                return
             if self.embed_update:
                 for m in self.embeddings.modules():
                     if isinstance(m, (nn.Conv1d, nn.Linear)):

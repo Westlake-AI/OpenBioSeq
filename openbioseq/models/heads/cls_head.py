@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import kaiming_init, normal_init
+from mmcv.runner import BaseModule
 
 from ..utils import accuracy, accuracy_mixup, trunc_normal_init
 from ..registry import HEADS
@@ -9,7 +10,7 @@ from ..builder import build_loss
 
 
 @HEADS.register_module
-class ClsHead(nn.Module):
+class ClsHead(BaseModule):
     """Simplest classifier head, with only one fc layer.
        *** Mixup and multi-label classification are supported ***
     
@@ -30,8 +31,9 @@ class ClsHead(nn.Module):
                  in_channels=2048,
                  num_classes=1000,
                  multi_label=False,
-                 frozen=False):
-        super(ClsHead, self).__init__()
+                 frozen=False,
+                 init_cfg=None):
+        super(ClsHead, self).__init__(init_cfg=init_cfg)
         self.with_avg_pool = with_avg_pool
         self.in_channels = in_channels
         self.num_classes = num_classes
@@ -56,6 +58,10 @@ class ClsHead(nn.Module):
             param.requires_grad = False
 
     def init_weights(self, init_linear='normal', std=0.01, bias=0.):
+        super(ClsHead, self).init_weights()
+
+        if self.init_cfg is not None:
+            return
         assert init_linear in ['normal', 'kaiming', 'trunc_normal'], \
             "Undefined init_linear: {}".format(init_linear)
         for m in self.modules():
@@ -98,9 +104,8 @@ class ClsHead(nn.Module):
             single_label = \
                 labels.dim() == 1 or (labels.dim() == 2 and labels.shape[1] == 1)
             # Notice: we allow the single-label cls using multi-label loss, thus
-            # * For single-label cls, loss = loss.sum() / N
-            # * For multi-label cls, loss = loss.sum() or loss.mean()
-            avg_factor = labels.size(0) if single_label else None
+            # * For single-label or multi-label cls, loss = loss.sum() / N
+            avg_factor = labels.size(0)
 
             target = labels.clone()
             if self.multi_label:
@@ -121,9 +126,8 @@ class ClsHead(nn.Module):
             single_label = \
                 y_a.dim() == 1 or (y_a.dim() == 2 and y_a.shape[1] == 1)
             # Notice: we allow the single-label cls using multi-label loss, thus
-            # * For single-label cls, loss = loss.sum() / N
-            # * For multi-label cls, loss = loss.sum() or loss.mean()
-            avg_factor = y_a.size(0) if single_label else None
+            # * For single-label or multi-label cls, loss = loss.sum() / N
+            avg_factor = y_a.size(0)
 
             if not self.multi_label:
                 losses['loss'] = \
