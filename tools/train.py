@@ -148,11 +148,11 @@ def main():
     datasets = [build_dataset(cfg.data.train)]
     assert len(cfg.workflow) == 1, "Validation is called by hook."
     if cfg.checkpoint_config is not None:
-        # save openmixup version, config file content and class names in
+        # save openbioseq version, config file content and class names in
         # checkpoints as meta data
         cfg.checkpoint_config.meta = dict(
-            openmixup_version=__version__, config=cfg.pretty_text)
-    
+            openbioseq_version=__version__, config=cfg.pretty_text)
+
     train_model(
         model,
         datasets,

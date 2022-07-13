@@ -33,7 +33,7 @@ class ClsHead(BaseModule):
                  multi_label=False,
                  frozen=False,
                  init_cfg=None):
-        super(ClsHead, self).__init__(init_cfg=init_cfg)
+        super(ClsHead, self).__init__(init_cfg)
         self.with_avg_pool = with_avg_pool
         self.in_channels = in_channels
         self.num_classes = num_classes

@@ -61,7 +61,7 @@ class ClsMixupHead(BaseModule):
                  neg_weight=1,
                  frozen=False,
                  init_cfg=None):
-        super(ClsMixupHead, self).__init__()
+        super(ClsMixupHead, self).__init__(init_cfg)
         self.with_avg_pool = bool(with_avg_pool)
         self.in_channels = int(in_channels)
         self.num_classes = int(num_classes)

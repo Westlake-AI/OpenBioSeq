@@ -104,29 +104,32 @@ def train_model(model,
     if cfg.get('addtional_scheduler', None) is not None:
         param_names = dict(model.named_parameters()).keys()
         assert isinstance(cfg.optimizer.get('paramwise_options', False), dict)
-    
+
     # build optimizer
     optimizer = build_optimizer(model, cfg.optimizer)
 
     # fp16 and optimizer
     if distributed:
-        optimizer_config = DistOptimizerHook(**cfg.optimizer_config)
         if cfg.get('use_fp16', False):
             # fp16 settings
-            fp16_cfg = cfg.get('fp16', dict(type=None))
+            fp16_cfg = cfg.get('fp16', dict(type='apex'))
             fp16_cfg['type'] = fp16_cfg.get('type', default_fp16)
-            fp16_cfg['loss_scale'] = fp16_cfg.get(
-                'loss_scale', dict(init_scale=512., mode='dynamic'))
             if fp16_cfg['type'] == 'apex':
-                model, optimizer = apex.amp.initialize(model.cuda(), optimizer, opt_level="O1")
+                model, optimizer = apex.amp.initialize(
+                    model.cuda(), optimizer, opt_level="O1")
+                optimizer_config = DistOptimizerHook(
+                    **cfg.optimizer_config, use_fp16=True)
                 print_log('**** Initializing mixed precision apex done. ****')
             elif fp16_cfg['type'] == 'mmcv':
+                loss_scale = fp16_cfg.get('loss_scale', 'dynamic')
                 optimizer_config = Fp16OptimizerHook(
-                    **cfg.optimizer_config, **fp16_cfg, distributed=True)
+                    **cfg.optimizer_config, loss_scale=loss_scale, distributed=True)
                 print_log('**** Initializing mixed precision mmcv done. ****')
+        else:
+            optimizer_config = DistOptimizerHook(**cfg.optimizer_config, use_fp16=False)
     else:
         optimizer_config = cfg.optimizer_config
-    
+
     # put model on gpus
     if distributed:
         find_unused_parameters = cfg.get('find_unused_parameters', False)
@@ -158,13 +161,16 @@ def train_model(model,
         if hook.type == "EMAHook":
             common_params = dict(dist_mode=True)
             runner.register_hook(build_hook(hook, common_params), priority='NORMAL')
-    
+
     # register basic hooks
-    runner.register_training_hooks(cfg.lr_config, optimizer_config,
-                                   cfg.checkpoint_config, cfg.log_config)
+    runner.register_training_hooks(cfg.lr_config,
+                                   optimizer_config,
+                                   cfg.checkpoint_config,
+                                   cfg.log_config,
+                                   cfg.get('momentum_config', None))
     if distributed:
         runner.register_hook(DistSamplerSeedHook())
-    
+
     # register custom hooks
     for hook in cfg.get('custom_hooks', list()):
         common_params = dict(dist_mode=distributed)

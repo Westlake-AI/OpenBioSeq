@@ -1,4 +1,3 @@
-# Copyright (c) OpenMMLab. All rights reserved.
 import copy
 
 from mmcv.runner.optimizer.builder import build_optimizer_constructor

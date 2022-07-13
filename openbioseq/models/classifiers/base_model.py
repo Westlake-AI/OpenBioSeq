@@ -1,18 +1,15 @@
 import warnings
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
-from mmcv.cnn import initialize
-from numpy import isin
+from mmcv.runner import BaseModule, auto_fp16
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 
-from openbioseq.utils import auto_fp16
 
-
-class BaseModel(nn.Module, metaclass=ABCMeta):
+class BaseModel(BaseModule, metaclass=ABCMeta):
     """Base model class for supervised, semi- and self-supervised learning."""
 
     def __init__(self,
@@ -30,10 +27,6 @@ class BaseModel(nn.Module, metaclass=ABCMeta):
         self.head = nn.Identity()
 
     @property
-    def is_init(self):
-        return self._is_init
-
-    @property
     def with_neck(self):
         return hasattr(self, 'neck') and self.neck is not None
 
@@ -44,12 +37,7 @@ class BaseModel(nn.Module, metaclass=ABCMeta):
     def init_weights(self, pretrained=None):
         """Initialize the weights."""
         if not self._is_init:
-            if hasattr(self, 'init_cfg'):
-                initialize(self, self.init_cfg)
-                self._is_init = True
-            for module in self.children():
-                if 'init_weights' in dir(module):
-                    module.init_weights()
+            super(BaseModel, self).init_weights()
         else:
             warnings.warn('This module has bee initialized, \
                 please call initialize(module, init_cfg) to reinitialize it')
@@ -230,7 +218,10 @@ class BaseModel(nn.Module, metaclass=ABCMeta):
         losses = self(**data)
         loss, log_vars = self._parse_losses(losses)
 
-        outputs = dict(
-            loss=loss, log_vars=log_vars, num_samples=len(data['data'].data))
+        if isinstance(data['img'], list):
+            num_samples = len(data['img'][0].data)
+        else:
+            num_samples = len(data['img'].data)
+        outputs = dict(loss=loss, log_vars=log_vars, num_samples=num_samples)
 
         return outputs

@@ -37,7 +37,7 @@ class VisionTransformerClsHead(BaseModule):
                  frozen=False,
                  init_cfg=dict(type='TruncNormal', layer='Linear', std=.02),
                  **kwargs):
-        super(VisionTransformerClsHead, self).__init__(init_cfg)
+        super(VisionTransformerClsHead, self).__init__(init_cfg=init_cfg)
         self.in_channels = in_channels
         self.num_classes = num_classes
         self.hidden_dim = hidden_dim

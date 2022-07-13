@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from mmcv.runner import BaseModule, get_dist_info
 
 from ..registry import HEADS
 from .. import builder
@@ -7,7 +8,7 @@ from ..utils import concat_all_gather
 
 
 @HEADS.register_module
-class LatentPredictHead(nn.Module):
+class LatentPredictHead(BaseModule):
     """Head for latent feature prediction.
 
     This head builds a predictor, which can be any registered neck component.
@@ -18,12 +19,15 @@ class LatentPredictHead(nn.Module):
         predictor (dict): Config dict for module of predictor.
     """
 
-    def __init__(self, predictor):
-        super(LatentPredictHead, self).__init__()
+    def __init__(self, predictor, init_cfg=None):
+        super(LatentPredictHead, self).__init__(init_cfg)
         self.predictor = builder.build_neck(predictor)
 
     def init_weights(self, init_linear='normal'):
-        self.predictor.init_weights(init_linear=init_linear)
+        if self.init_cfg is not None:
+            super(LatentPredictHead, self).init_weights()
+        else:
+            self.predictor.init_weights(init_linear=init_linear)
 
     def forward(self, input, target):
         """Forward head.
@@ -44,7 +48,7 @@ class LatentPredictHead(nn.Module):
 
 
 @HEADS.register_module
-class LatentClsHead(nn.Module):
+class LatentClsHead(BaseModule):
     """Head for latent feature classification.
 
     Args:
@@ -54,13 +58,17 @@ class LatentClsHead(nn.Module):
 
     def __init__(self,
                  in_channels,
-                 num_classes):
-        super(LatentClsHead, self).__init__()
+                 num_classes,
+                 init_cfg=None):
+        super(LatentClsHead, self).__init__(init_cfg)
         self.predictor = nn.Linear(in_channels, num_classes)
         self.criterion = nn.CrossEntropyLoss()
 
     def init_weights(self, init_linear='normal'):
-        self.predictor.init_weights(init_linear=init_linear)
+        if self.init_cfg is not None:
+            super(LatentClsHead, self).init_weights()
+        else:
+            self.predictor.init_weights(init_linear=init_linear)
 
     def forward(self, input, target):
         """Forward head.
@@ -79,8 +87,56 @@ class LatentClsHead(nn.Module):
         return dict(loss=loss)
 
 
+@HEADS.register_module()
+class LatentCrossCorrelationHead(BaseModule):
+    """Head for latent feature cross correlation. Part of the code is borrowed
+    from:
+    `https://github.com/facebookresearch/barlowtwins/blob/main/main.py>`_.
+
+    Args:
+        in_channels (int): Number of input channels.
+        lambd (float): Weight on off-diagonal terms. Defaults to 0.0051.
+    """
+
+    def __init__(self, in_channels=8192, lambd=0.0051, init_cfg=None):
+        super(LatentCrossCorrelationHead, self).__init__(init_cfg)
+        self.lambd = lambd
+        _, self.world_size = get_dist_info()
+        self.bn = nn.BatchNorm1d(in_channels, affine=False)
+
+    def off_diagonal(self, x):
+        """Rreturn a flattened view of the off-diagonal elements of a square
+        matrix."""
+        n, m = x.shape
+        assert n == m
+        return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> dict:
+        """Forward head.
+
+        Args:
+            input (Tensor): NxC input features.
+            target (Tensor): NxC target features.
+
+        Returns:
+            dict[str, Tensor]: A dictionary of loss components.
+        """
+        # cross-correlation matrix
+        cross_correlation_matrix = self.bn(input).T @ self.bn(target)
+        cross_correlation_matrix.div_(input.size(0) * self.world_size)
+
+        if torch.distributed.is_initialized():
+            torch.distributed.all_reduce(cross_correlation_matrix)
+
+        # loss
+        on_diag = torch.diagonal(cross_correlation_matrix).add_(-1).pow_(2).sum()
+        off_diag = self.off_diagonal(cross_correlation_matrix).pow_(2).sum()
+        loss = on_diag + self.lambd * off_diag
+        return dict(loss=loss)
+
+
 @HEADS.register_module
-class MoCoV3Head(nn.Module):
+class MoCoV3Head(BaseModule):
     """Head for MoCo v3 algorithms (similar to BYOL head)
 
     This head builds a predictor, which can be any registered neck component.
@@ -95,14 +151,17 @@ class MoCoV3Head(nn.Module):
             Defaults to 1.0.
     """
 
-    def __init__(self, predictor, temperature=1.0):
-        super(MoCoV3Head, self).__init__()
+    def __init__(self, predictor, temperature=1.0, init_cfg=None):
+        super(MoCoV3Head, self).__init__(init_cfg)
         self.predictor = builder.build_neck(predictor)
         self.temperature = temperature
         self.criterion = nn.CrossEntropyLoss()
 
     def init_weights(self, init_linear='normal'):
-        self.predictor.init_weights(init_linear=init_linear)
+        if self.init_cfg is not None:
+            super(MoCoV3Head, self).init_weights()
+        else:
+            self.predictor.init_weights(init_linear=init_linear)
 
     def forward(self, base_out, momentum_out):
         """Forward head.

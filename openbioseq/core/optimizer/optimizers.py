@@ -6,7 +6,7 @@ from torch.optim.optimizer import Optimizer, required
 from torch.optim import *
 
 
-# @OPTIMIZERS.register_module()
+@OPTIMIZERS.register_module()
 class LARS(Optimizer):
     r"""Implements layer-wise adaptive rate scaling for SGD.
 
