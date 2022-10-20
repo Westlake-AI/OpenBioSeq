@@ -7,7 +7,7 @@
 
 ## Introduction
 
-The main branch works with **PyTorch 1.8** or higher.
+The main branch works with **PyTorch 1.8** (required by some self-supervised methods) or higher (we recommend **PyTorch 1.12**). You can still use **PyTorch 1.6** for most methods.
 
 `OpenBioSeq` is an open-source supervised and self-supervised bio-sequence representation learning toolbox based on PyTorch. `OpenBioSeq` supports popular backbones, pre-training methods, and various features.
 
@@ -17,24 +17,39 @@ Learning useful bio-sequence representation efficiently facilitates various down
 
 ### Major features
 
-This repo will be continued to update in the next two months! Please watch us for latest update!
+This repo will be continued to update in 2022! Please watch us for latest update!
 
 ## Change Log
 
 Please refer to [CHANGELOG.md](docs/CHANGELOG.md) for details and release history.
 
-[2020-06-09] `OpenBioSeq` v0.1.1 is released.
+[2022-06-09] `OpenBioSeq` v0.1.1 is released.
 
-[2020-05-24] `OpenBioSeq` v0.1.0 is initialized.
+[2022-05-24] `OpenBioSeq` v0.1.0 is initialized.
 
 ## Installation
 
-Please refer to [INSTALL.md](docs/INSTALL.md) for installation and dataset preparation.
+There are quick installation steps for develepment:
+
+```shell
+conda create -n openbioseq python=3.8 pytorch=1.12 cudatoolkit=11.3 torchvision -c pytorch -y
+conda activate openbioseq
+pip install openmim
+mim install mmcv-full
+git clone https://github.com/Westlake-AI/OpenBioSeq.git
+cd OpenBioSeq
+python setup.py develop
+```
+
+Please refer to [INSTALL.md](docs/INSTALL.md) for detailed installation instructions and dataset preparation.
 
 ## Get Started
 
-Please see [Getting Started](docs/GETTING_STARTED.md) for the basic usage of OpenBioSeq (based on OpenMixup and MMSelfSup).
-Then, see [tutorials](docs/tutorials) for more tech details (based on MMClassification), which is similar to most open-source projects in MMLab.
+Please see [Getting Started](docs/GETTING_STARTED.md) for the basic usage of OpenBioSeq (based on OpenMixup and MMSelfSup). As an example, you can start a multiple GPUs training with a certain `CONFIG_FILE` using the following script: 
+```shell
+bash tools/dist_train.sh ${CONFIG_FILE} ${GPUS} [optional arguments]
+```
+Then, please see [tutorials](docs/tutorials) for more tech details (based on MMClassification).
 
 ## License
 
@@ -52,7 +67,7 @@ If you find this project useful in your research, please consider cite:
 ```BibTeX
 @misc{2022openbioseq,
     title={{OpenBioSeq}: Open Toolbox and Benchmark for Bio-sequence Representation Learning},
-    author={Li, Siyuan and Liu, Zichen and Wu, Di and Stan Z. Li},
+    author={Li, Siyuan and Liu, Zicheng and Wu, Di and Stan Z. Li},
     howpublished = {\url{https://github.com/Westlake-AI/openbioseq}},
     year={2022}
 }

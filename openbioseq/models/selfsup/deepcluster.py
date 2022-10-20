@@ -1,10 +1,7 @@
-# reference: https://github.com/open-mmlab/mmselfsup/tree/master/mmselfsup/models/algorithms
-# modified from mmselfsup deepcluster.py
 import numpy as np
 import torch
 
 from openbioseq.utils import print_log
-
 from ..classifiers import BaseModel
 from .. import builder
 from ..registry import MODELS
@@ -88,7 +85,7 @@ class DeepCluster(BaseModel):
         """Forward computation during test.
 
         Args:
-            data (Tensor): Input images of shape (N, C, H, W) or (N, C, D).
+            data (Tensor): Input images of shape (N, C, H, W) or (N, C, L).
                 Typically these should be mean centered and std scaled.
 
         Returns:

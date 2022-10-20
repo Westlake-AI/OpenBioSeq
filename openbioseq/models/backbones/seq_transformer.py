@@ -49,6 +49,15 @@ class SequenceTransformer(BaseBackbone):
         drop_path_rate (float): stochastic depth rate. Defaults to 0.
         qkv_bias (bool): Whether to add bias for qkv in attention modules.
             Defaults to True.
+        feat_scale (bool): If True, use FeatScale (anti-oversmoothing).
+            FeatScale re-weights feature maps on separate frequency bands
+            to amplify the high-frequency signals.
+            Defaults to False.
+        attn_scale (bool): If True, use AttnScale (anti-oversmoothing).
+            AttnScale decomposes a self-attention block into low-pass and
+            high-pass components, then rescales and combines these two filters
+            to produce an all-pass self-attention matrix.
+            Defaults to False.
         norm_cfg (dict): Config dict for normalization layer.
             Defaults to ``dict(type='LN')``.
         final_norm (bool): Whether to add a additional layer to normalize
@@ -139,6 +148,8 @@ class SequenceTransformer(BaseBackbone):
                  drop_rate=0.,
                  drop_path_rate=0.,
                  qkv_bias=True,
+                 feat_scale=False,
+                 attn_scale=False,
                  norm_cfg=dict(type='LN', eps=1e-6),
                  act_cfg=dict(type='GELU'),
                  stem_layer=1,
@@ -254,6 +265,8 @@ class SequenceTransformer(BaseBackbone):
                 init_values=init_values,
                 drop_path_rate=dpr[i],
                 qkv_bias=qkv_bias,
+                feat_scale=feat_scale,
+                attn_scale=attn_scale,
                 norm_cfg=norm_cfg,
                 act_cfg=act_cfg)
             _layer_cfg.update(layer_cfgs[i])

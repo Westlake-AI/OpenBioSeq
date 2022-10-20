@@ -1,10 +1,7 @@
-# reference: https://github.com/open-mmlab/mmselfsup/tree/master/mmselfsup/models/algorithms
-# modified from mmselfsup moco.py
 import torch
 import torch.nn as nn
 
 from openbioseq.utils import print_log
-
 from ..classifiers import BaseModel
 from .. import builder
 from ..registry import MODELS
@@ -156,7 +153,7 @@ class MOCO(BaseModel):
 
         Args:
             data (list[Tensor]): A list of input images with shape (N, C, H, W)
-                or (N, C, D). Typically these should be mean centered
+                or (N, C, L). Typically these should be mean centered
                 and std scaled.
 
         Returns:

@@ -316,6 +316,10 @@ class MultiheadAttention(BaseModule):
     dims and embed dims. And it also supports a shortcut from ``value``, which
     is useful if input dims is not the same with embed dims.
 
+    `attn_scale` is modified from : `Anti-Oversmoothing in Deep Vision
+    Transformers via the Fourier Domain Analysis: From Theory to Practice
+    <https://arxiv.org/abs/2203.05962>`_
+
     Args:
         embed_dims (int): The embedding dimension.
         num_heads (int): Parallel attention heads.
@@ -333,6 +337,11 @@ class MultiheadAttention(BaseModule):
             ``head_dim ** -0.5`` if set. Defaults to None.
         proj_bias (bool) If True, add a learnable bias to output projection.
             Defaults to True.
+        attn_scale (bool): If True, use AttnScale (anti-oversmoothing).
+            AttnScale decomposes a self-attention block into low-pass and
+            high-pass components, then rescales and combines these two filters
+            to produce an all-pass self-attention matrix.
+            Defaults to False.
         v_shortcut (bool): Add a shortcut from value to output. It's usually
             used if ``input_dims`` is different from ``embed_dims``.
             Defaults to False.
@@ -350,6 +359,7 @@ class MultiheadAttention(BaseModule):
                  qkv_bias=True,
                  qk_scale=None,
                  proj_bias=True,
+                 attn_scale=False,
                  v_shortcut=False,
                  init_cfg=None):
         super(MultiheadAttention, self).__init__(init_cfg=init_cfg)
@@ -367,6 +377,11 @@ class MultiheadAttention(BaseModule):
         self.proj = nn.Linear(embed_dims, embed_dims, bias=proj_bias)
         self.proj_drop = nn.Dropout(proj_drop)
 
+        self.attn_scale = attn_scale
+        if self.attn_scale:
+            self.lamb = nn.Parameter(
+                torch.zeros(num_heads), requires_grad=True)
+
         self.out_drop = DROPOUT_LAYERS.build(dropout_layer)
 
     def forward(self, x):
@@ -377,6 +392,16 @@ class MultiheadAttention(BaseModule):
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
+
+        if self.attn_scale:
+            attn_d = torch.ones(
+                attn.shape[-2:], device=attn.device) / N  # [l, l]
+            attn_d = attn_d[None, None, ...]  # [B, N, l, l]
+            attn_h = attn - attn_d  # [B, N, l, l]
+            attn_h = attn_h * (1. + self.lamb[None, :, None, None]
+                               )  # [B, N, l, l]
+            attn = attn_d + attn_h  # [B, N, l, l]
+
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, self.embed_dims)
@@ -389,10 +414,14 @@ class MultiheadAttention(BaseModule):
 
 
 class MultiheadAttentionWithRPE(MultiheadAttention):
-    """Multi-head Attention Module.
+    """Multi-head Attention Module with relative position.
 
     This module rewrite the MultiheadAttention in MMSelfSup by adding the
     relative position bias.
+
+    `attn_scale` is modified from : `Anti-Oversmoothing in Deep Vision
+    Transformers via the Fourier Domain Analysis: From Theory to Practice
+    <https://arxiv.org/abs/2203.05962>`_
 
     Args:
         embed_dims (int): The embedding dimension.
@@ -412,6 +441,11 @@ class MultiheadAttentionWithRPE(MultiheadAttention):
             ``head_dim ** -0.5`` if set. Defaults to None.
         proj_bias (bool) If True, add a learnable bias to output projection.
             Defaults to True.
+        attn_scale (bool): If True, use AttnScale (anti-oversmoothing).
+            AttnScale decomposes a self-attention block into low-pass and
+            high-pass components, then rescales and combines these two filters
+            to produce an all-pass self-attention matrix.
+            Defaults to False.
         init_cfg (dict, optional): The Config for initialization.
             Defaults to None.
     """
@@ -426,6 +460,7 @@ class MultiheadAttentionWithRPE(MultiheadAttention):
                  qkv_bias: bool = True,
                  qk_scale: float = None,
                  proj_bias: bool = True,
+                 attn_scale: bool = False,
                  init_cfg: dict = None) -> None:
         super().__init__(
             embed_dims=embed_dims,
@@ -436,6 +471,7 @@ class MultiheadAttentionWithRPE(MultiheadAttention):
             qkv_bias=qkv_bias,
             qk_scale=qk_scale,
             proj_bias=proj_bias,
+            attn_scale=attn_scale,
             init_cfg=init_cfg)
 
         self.qkv = nn.Linear(self.input_dims, embed_dims * 3, bias=False)
@@ -484,6 +520,11 @@ class MultiheadAttentionWithRPE(MultiheadAttention):
         self.register_buffer('relative_position_index',
                              relative_position_index)
 
+        self.attn_scale = attn_scale
+        if self.attn_scale:
+            self.lamb = nn.Parameter(
+                torch.zeros(num_heads), requires_grad=True)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         qkv_bias = None
         if self.q_bias is not None:
@@ -512,6 +553,16 @@ class MultiheadAttentionWithRPE(MultiheadAttention):
             attn = attn + relative_position_bias.unsqueeze(0)
 
         attn = attn.softmax(dim=-1)
+
+        if self.attn_scale:
+            attn_d = torch.ones(
+                attn.shape[-2:], device=attn.device) / N  # [l, l]
+            attn_d = attn_d[None, None, ...]  # [B, N, l, l]
+            attn_h = attn - attn_d  # [B, N, l, l]
+            attn_h = attn_h * (1. + self.lamb[None, :, None, None]
+                               )  # [B, N, l, l]
+            attn = attn_d + attn_h  # [B, N, l, l]
+
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, self.embed_dims)

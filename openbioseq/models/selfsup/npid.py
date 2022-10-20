@@ -1,10 +1,7 @@
-# reference: https://github.com/open-mmlab/mmselfsup/tree/master/mmselfsup/models/algorithms
-# modified from mmselfsup npid.py
 import torch
 import torch.nn as nn
 
 from openbioseq.utils import print_log
-
 from ..classifiers import BaseModel
 from .. import builder
 from ..registry import MODELS
@@ -68,7 +65,7 @@ class NPID(BaseModel):
         """Forward computation during training.
 
         Args:
-            data (Tensor): Input images of shape (N, C, H, W) or (N, C, D).
+            data (Tensor): Input images of shape (N, C, H, W) or (N, C, L).
                 Typically these should be mean centered and std scaled.
             idx (Tensor): Index corresponding to each image.
             kwargs: Any keyword arguments to be used to forward.

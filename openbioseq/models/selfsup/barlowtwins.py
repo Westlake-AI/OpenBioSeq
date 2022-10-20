@@ -1,5 +1,3 @@
-# reference: https://github.com/open-mmlab/mmselfsup/tree/master/mmselfsup/models/algorithms
-# modified from mmselfsup barlowtwins.py
 from openbioseq.utils import print_log
 
 from ..classifiers import BaseModel
@@ -54,22 +52,22 @@ class BarlowTwins(BaseModel):
         self.backbone.init_weights(pretrained=pretrained)  # backbone
         self.neck.init_weights(init_linear='kaiming')
 
-    def forward_train(self, img, **kwargs):
+    def forward_train(self, data, **kwargs):
         """Forward computation during training.
 
         Args:
-            img (list[Tensor]): A list of input images with shape
-                (N, C, H, W). Typically these should be mean centered
-                and std scaled.
+            data (list[Tensor]): A list of input images with shape
+                (N, C, H, W) or (N, C, L). Typically these should be mean
+                centered and std scaled.
         Returns:
             dict[str, Tensor]: A dictionary of loss components.
         """
-        assert isinstance(img, list) and len(img) >= 2
-        img_v1 = img[0].contiguous()
-        img_v2 = img[1].contiguous()
+        assert isinstance(data, list) and len(data) >= 2
+        data_v1 = data[0].contiguous()
+        data_v2 = data[1].contiguous()
 
-        z1 = self.neck(self.backbone(img_v1))[0]  # NxC
-        z2 = self.neck(self.backbone(img_v2))[0]  # NxC
+        z1 = self.neck(self.backbone(data_v1))[0]  # NxC
+        z2 = self.neck(self.backbone(data_v2))[0]  # NxC
 
         losses = self.head(z1, z2)['loss']
         return dict(loss=losses)

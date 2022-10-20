@@ -1,10 +1,7 @@
-# reference: https://github.com/open-mmlab/mmselfsup/tree/master/mmselfsup/models/algorithms
-# modified from mmselfsup mocov3.py
 import torch
 import torch.nn as nn
 
 from openbioseq.utils import print_log
-
 from ..classifiers import BaseModel
 from .. import builder
 from ..registry import MODELS
@@ -85,11 +82,11 @@ class MoCoV3(BaseModel):
         """Forward backbone.
 
         Args:
-            data (Tensor): Input images of shape (N, C, H, W) or (N, C, D).
+            data (Tensor): Input images of shape (N, C, H, W) or (N, C, L).
                 Typically these should be mean centered and std scaled.
 
         Returns:
-            tuple[Tensor]: backbone outputs of (N, D).
+            tuple[Tensor]: backbone outputs of (N, C).
         """
         x = self.backbone(data)
         if len(x) == 3:

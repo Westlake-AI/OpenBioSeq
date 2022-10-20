@@ -1,13 +1,12 @@
-# Copyright (c) OpenMMLab. All rights reserved.
-from openbioseq.models.utils.weight_init import trunc_normal_
 import torch
 import torch.nn as nn
-from openbioseq.models.backbones.vision_transformer import TransformerEncoderLayer
-from mmcv.cnn import build_norm_layer, constant_init, trunc_normal_init
+from mmcv.cnn import (build_norm_layer,
+                      constant_init, trunc_normal_init)
 from mmcv.runner.base_module import BaseModule
+from openbioseq.models.backbones.vision_transformer import TransformerEncoderLayer
 
 from ..registry import NECKS
-from ..utils import build_2d_sincos_position_embedding
+from ..utils import build_2d_sincos_position_embedding, trunc_normal_
 
 
 @NECKS.register_module()
@@ -52,8 +51,9 @@ class MAEPretrainDecoder(BaseModule):
                  decoder_depth=8,
                  decoder_num_heads=16,
                  mlp_ratio=4.,
-                 norm_cfg=dict(type='LN', eps=1e-6)):
-        super(MAEPretrainDecoder, self).__init__()
+                 norm_cfg=dict(type='LN', eps=1e-6),
+                 init_cfg=None):
+        super(MAEPretrainDecoder, self).__init__(init_cfg)
         self.num_patches = num_patches
         self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)
 
@@ -79,6 +79,9 @@ class MAEPretrainDecoder(BaseModule):
             decoder_embed_dim, patch_size**2 * in_chans, bias=True)
 
     def init_weights(self):
+        if self.init_cfg is not None:
+            super(MAEPretrainDecoder, self).init_weights()
+            return
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 trunc_normal_init(m, std=0.02, bias=0)
@@ -97,6 +100,8 @@ class MAEPretrainDecoder(BaseModule):
         return getattr(self, self.decoder_norm_name)
 
     def forward(self, x, ids_restore):
+        if isinstance(x, list):
+            x = x[-1]
         # embed tokens
         x = self.decoder_embed(x)
 
@@ -123,5 +128,59 @@ class MAEPretrainDecoder(BaseModule):
 
         # remove cls token
         x = x[:, 1:, :]
+
+        return x
+
+
+@NECKS.register_module()
+class SimMIMNeck(BaseModule):
+    """Pre-train Neck For SimMIM.
+
+    This neck reconstructs the original image from the shrunk feature map.
+
+    Args:
+        in_channels (int): Channel dimension of the feature map.
+        out_channels (int): Channel dimension of the output.
+        encoder_stride (int): The total stride of the encoder.
+        feature_Nd (str): Build Nd feature in {'1d', '2d'}. Default: '2d'.
+    """
+
+    def __init__(self,
+                 in_channels=128,
+                 out_channels=3,
+                 encoder_stride=32,
+                 feature_Nd="2d",
+                 init_cfg=None):
+        super(SimMIMNeck, self).__init__(init_cfg)
+        self.out_channels = out_channels
+        self.feature_Nd = feature_Nd
+        assert feature_Nd in ["2d", "1d",]
+
+        if feature_Nd == "2d":
+            self.decoder = nn.Sequential(
+                nn.Conv2d(
+                    in_channels=in_channels,
+                    out_channels=encoder_stride**2 * out_channels,
+                    kernel_size=1),
+                nn.PixelShuffle(encoder_stride),
+            )
+        else:
+            self.decoder = nn.Conv1d(
+                in_channels=in_channels,
+                out_channels=encoder_stride * out_channels,
+                kernel_size=1,
+            )
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, (nn.Conv1d, nn.Conv2d)):
+                trunc_normal_init(m, std=0.02, bias=0)
+
+    def forward(self, x):
+        if isinstance(x, list):
+            x = x[-1]
+        x = self.decoder(x)
+        if self.feature_Nd == "1d":
+            x = x.reshape(x.size(0), -1, self.out_channels)
 
         return x

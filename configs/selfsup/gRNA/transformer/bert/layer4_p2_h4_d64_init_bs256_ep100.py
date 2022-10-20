@@ -9,10 +9,10 @@ seq_len = 63
 
 # model settings
 model = dict(
-    type='Classification',
+    type='BERT',
     pretrained=None,
     backbone=dict(
-        type='SequenceTransformer',
+        type='SimMIMTransformer',
         arch=dict(
             embed_dims=embed_dim,
             num_layers=4,
@@ -22,31 +22,33 @@ model = dict(
         in_channels=4,
         patch_size=patch_size,
         seq_len=int(seq_len / patch_size) + bool(seq_len % patch_size != 0),
+        mask_layer=0,
+        mask_ratio=0.15,  # BERT 15%
+        mask_token='learnable',
         norm_cfg=dict(type='LN', eps=1e-6),
         drop_rate=0.1,
         drop_path_rate=0.1,
         final_norm=True,
         out_indices=-1,  # last layer
-        with_cls_token=False,
-        output_cls_token=False,
+        with_cls_token=True,
+        output_cls_token=True,
     ),
+    neck=dict(
+        type='SimMIMNeck',
+        feature_Nd="1d", in_channels=embed_dim, out_channels=4, encoder_stride=1),
     head=dict(
-        type='RegHead',
-        loss=[
-            dict(type='RegressionLoss', mode='focal_l1_loss',
-                loss_weight=1.0, reduction='mean',
-                activate='sigmoid', alpha=0.2, gamma=1.0, residual=True),
-            dict(type='RegressionLoss', mode='balanced_mse_loss',
-                loss_weight=1.0, reduction='mean',
-                init_noise_sigma=1.0),
-        ],
-        with_avg_pool=True, in_channels=embed_dim, out_channels=1),
+        type='MIMHead',
+        loss=dict(type='CrossEntropyLoss', loss_weight=1.0),
+        feature_Nd="1d", unmask_weight=0., encoder_in_channels=4,
+    )
 )
+
+# dataset
+data = dict(samples_per_gpu=256, workers_per_gpu=4)
 
 # optimizer
 optimizer = dict(
     type='AdamW',
-    # lr=3e-4,
     lr=1e-3,
     weight_decay=1e-2, eps=1e-8, betas=(0.9, 0.999),
     paramwise_options={
@@ -55,15 +57,13 @@ optimizer = dict(
         'bias': dict(weight_decay=0.),
         'cls_token': dict(weight_decay=0.),
         'pos_embed': dict(weight_decay=0.),
-        'noise_sigma': dict(weight_decay=0., lr_mult=1e-1),
     })
 
 # apex
 use_fp16 = False
-fp16 = dict(type='apex', loss_scale=dict(init_scale=512., mode='dynamic'))
+fp16 = dict(type='mmcv', loss_scale=dict(mode='dynamic'))
 optimizer_config = dict(
-    grad_clip=dict(max_norm=5.0),
-    update_interval=1, use_fp16=use_fp16)
+    grad_clip=dict(max_norm=5.0), update_interval=1)
 
 # learning policy
 lr_config = dict(

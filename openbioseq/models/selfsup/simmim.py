@@ -6,18 +6,18 @@ from ..registry import MODELS
 
 
 @MODELS.register_module
-class MAE(BaseModel):
-    """MAE.
+class SimMIM(BaseModel):
+    """SimMIM.
 
-    Implementation of `Masked Autoencoders Are Scalable Vision Learners
-    <https://arxiv.org/abs/2111.06377>`_.
-    
+    Implementation of `SimMIM: A Simple Framework for Masked Image Modeling
+    <https://arxiv.org/abs/2111.09886>`_.
+
     Args:
-        backbone (dict): Config dict for encoder.
+        backbone (dict): Config dict for encoder. Defaults to None.
         neck (dict): Config dict for encoder. Defaults to None.
         head (dict): Config dict for loss functions. Defaults to None.
-        pretrained (str, optional): Path to pre-trained weights. Default: None.
-        init_cfg (dict): Config dict for weight initialization.
+        save (bool): Saving reconstruction results. Defaults to False.
+        init_cfg (dict, optional): Config dict for weight initialization.
             Defaults to None.
     """
 
@@ -28,12 +28,12 @@ class MAE(BaseModel):
                  pretrained=None,
                  init_cfg=None,
                  **kwargs):
-        super(MAE, self).__init__(init_cfg, **kwargs)
+        super(SimMIM, self).__init__(init_cfg, **kwargs)
         assert isinstance(neck, dict) and isinstance(head, dict)
         self.backbone = builder.build_backbone(backbone)
         self.neck = builder.build_neck(neck)
-        self.neck.num_patches = self.backbone.num_patches
         self.head = builder.build_head(head)
+        
         self.init_weights(pretrained=pretrained)
 
     def init_weights(self, pretrained=None):
@@ -43,7 +43,7 @@ class MAE(BaseModel):
             pretrained (str, optional): Path to pre-trained weights.
                 Default: None.
         """
-        super(MAE, self).init_weights()
+        super(SimMIM, self).init_weights()
 
         if pretrained is not None:
             print_log('load model from: {}'.format(pretrained), logger='root')
@@ -54,8 +54,9 @@ class MAE(BaseModel):
         """Forward backbone.
 
         Args:
-            data (Tensor): Input images of shape (N, C, H, W) or (N, C, L).
-                Typically these should be mean centered and std scaled.
+            data (list[Tensor]): A list of input images with shape
+                (N, C, H, W) or (N, C, L). Typically these should be mean
+                centered and std scaled.
 
         Returns:
             tuple[Tensor]: backbone outputs of (N, C).
@@ -63,24 +64,30 @@ class MAE(BaseModel):
         x = self.backbone(data)
         if len(x) == 3:
             # return cls_token, yeilding better performances than patch tokens
-            return [x[0][:, 0]]
-        elif len(x) == 2:
-            return [x[0][-1]]  # return cls_token
+            x = x[0][:, 0]
         else:
-            return x
+            x = x[0][-1]  # return cls_token
+        return [x]
 
     def forward_train(self, data, **kwargs):
-        """Forward computation during training.
+        """Forward the masked image and get the reconstruction loss.
 
         Args:
-            data (Tensor): Input images of shape (N, C, H, W) or (N, C, L).
-            kwargs: Any keyword arguments to be used to forward.
+            x (List[torch.Tensor, torch.Tensor]): Data and masks.
 
         Returns:
-            dict[str, Tensor]: A dictionary of loss components.
+            dict: Reconstructed loss.
         """
-        latent, mask, ids_restore = self.backbone(data)
-        pred = self.neck(latent, ids_restore)
-        losses = self.head(data, pred, mask)
+        mask = kwargs.get('mask', None)
+        if isinstance(data, list):
+            data, mask = data
+        if isinstance(mask, list):
+            mask, _ = mask
+
+        x_latent = self.backbone(data, mask)
+        x_rec = self.neck(x_latent[0])
+        if isinstance(x_rec, list):
+            x_rec = x_rec[-1]
+        losses = self.head(data, x_rec, mask)
 
         return losses
