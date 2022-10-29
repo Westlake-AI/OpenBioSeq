@@ -35,6 +35,8 @@ def accuracy(pred, target, topk=1, thrs=0.):
     maxk = max(topk)
     pred_score, pred_label = pred.topk(maxk, dim=1)
     pred_label = pred_label.t()
+    if target.dim() == 2 and target.size() == pred.size():  # one-hot target
+        _, target = target.topk(1, dim=1)
     correct = pred_label.eq(target.view(1, -1).expand_as(pred_label))
 
     res = []
@@ -45,7 +47,7 @@ def accuracy(pred, target, topk=1, thrs=0.):
             correct_k = _correct[:k].reshape(-1).float().sum(0, keepdim=True)
         else:
             correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
-        res.append(correct_k.mul_(100.0 / pred.size(0)))
+        res.append(correct_k.mul_(100.0 / max(pred.size(0), 1)))
     return res[0] if return_single else res
 
 

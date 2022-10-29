@@ -2,6 +2,7 @@ import torch
 
 from openbioseq.utils import print_log
 from ..classifiers import BaseModel
+from ..utils import accuracy, AdaptivePadding1d
 from .. import builder
 from ..registry import MODELS
 
@@ -26,6 +27,7 @@ class BERT(BaseModel):
                  backbone,
                  neck=None,
                  head=None,
+                 mask_ratio=0.15,
                  pretrained=None,
                  init_cfg=None,
                  **kwargs):
@@ -34,6 +36,14 @@ class BERT(BaseModel):
         self.backbone = builder.build_backbone(backbone)
         self.neck = builder.build_neck(neck)
         self.head = builder.build_head(head)
+        self.mask_ratio = mask_ratio
+        self.patch_size = getattr(self.backbone, 'patch_size', 1)
+        if self.patch_size > 1:
+            self.padding = AdaptivePadding1d(
+                kernel_size=self.patch_size, stride=self.patch_size,
+                dilation=1, padding="corner")
+        else:
+            self.padding = None
 
         self.init_weights(pretrained=pretrained)
 
@@ -81,18 +91,24 @@ class BERT(BaseModel):
             dict[str, Tensor]: A dictionary of loss components.
         """
         assert data.dim() == 3, "data shape should be (N, C, L)"
+        if self.padding is not None:
+            data = self.padding(data)
+        B, _, L = data.size()
 
-        latent, mask = self.backbone(data, mask=None)
-        data_rec = self.neck(latent[0])
+        mask = torch.bernoulli(torch.full([1, L], self.mask_ratio)).cuda()
+        latent, _ = self.backbone(data, mask=None)
+        latent = latent.reshape(-1, latent.size(2))  # (B, L, C) -> (BxL, C)
+        data_rec = self.neck(latent)
         if isinstance(data_rec, list):
             data_rec = data_rec[-1]
-        
-        ####
-        print("BERT:", data.shape, data_rec.shape)
-        ####
-        losses = self.head(
-            data.reshape(-1, data.size(2)),
-            data_rec.reshape(-1, data.size(2)),
-            mask.reshape(-1, 1))
+
+        target = data.permute(0, 2, 1).reshape(-1, data.size(1))  # (B, C, L) -> (BxL, C)
+        if data_rec.dim() == 3:
+            data_rec = data_rec.reshape(-1, data_rec.size(2))  # (B, L, C) -> (BxL, C)
+        mask = mask.view(1, L).expand(B, L).reshape(-1, 1)
+        losses = self.head(target, data_rec, mask)
+
+        mask = mask.squeeze().bool()
+        losses['acc'] = accuracy(data_rec[mask], target[mask])
 
         return losses

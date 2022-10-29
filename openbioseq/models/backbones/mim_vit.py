@@ -303,8 +303,6 @@ def forward_simmim_masking(x, mask_token, mask=None, mask_mode=None):
         mask_token.data = x.mean(dim=[0, 1,], keepdim=True)
     mask = mask.flatten(1).unsqueeze(-1).type_as(x)  # (B, L, 1)
 
-    print(mask.shape, x.shape)
-
     if mask.size(1) + 1 == L:  # with cls_token
         mask_token = mask_token.expand(B, L-1, -1)
         x[:, 1:] = x[:, 1:] * (1. - mask) + mask_token * mask

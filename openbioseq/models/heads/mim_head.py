@@ -133,8 +133,8 @@ class SimMIMHead(BaseModule):
             else:
                 mask = F.interpolate(mask.type_as(x).unsqueeze(1),
                                     scale_factor=(scale_h, scale_w), mode="nearest")
-        else:  # (B, L, C)
-            assert x.size(1) == mask.size(1)
+        else:  # (B, L, C) -> (B x L, C)
+            assert x.size(1) == mask.size(1) or mask.size(1) == 1
 
         loss_rec = F.l1_loss(x_rec, x, reduction='none')
         loss = (loss_rec * mask).sum() / (mask.sum() +
@@ -184,8 +184,8 @@ class MIMHead(BaseModule):
             else:
                 mask = F.interpolate(mask.type_as(x).unsqueeze(1),
                                     scale_factor=(scale_h, scale_w), mode="nearest")
-        else:  # (B, L, C)
-            assert x.size(1) == mask.size(1)
+        else:  # (B, L, C) -> (B x L, C)
+            assert x.size(1) == mask.size(1) or mask.size(1) == 1
 
         # loss
         if self.unmask_weight > 0.:
@@ -194,7 +194,7 @@ class MIMHead(BaseModule):
             mask_s = mask_s + (1. - mask_s) * self.unmask_weight
         else:
             mask_s = mask
-        loss_rec = self.criterion(x_rec, target=x, reduction_override='none')
+        loss_rec = self.criterion(x_rec, x, reduction_override='none')
         loss_rec = (loss_rec * mask_s).sum() / (
             (mask_s.sum() + 1e-5) * self.encoder_in_channels)
         losses = dict(loss=loss_rec)

@@ -1,12 +1,62 @@
 import torch
 import torch.nn as nn
-from mmcv.cnn import (build_norm_layer,
+from mmcv.cnn import (build_activation_layer, build_norm_layer,
                       constant_init, trunc_normal_init)
 from mmcv.runner.base_module import BaseModule
 from openbioseq.models.backbones.vision_transformer import TransformerEncoderLayer
 
+from .. import builder
 from ..registry import NECKS
 from ..utils import build_2d_sincos_position_embedding, trunc_normal_
+
+
+@NECKS.register_module()
+class BERTMLMNeck(BaseModule):
+    """Pre-train Neck For BERT.
+
+    This neck reconstructs the original image from the shrunk feature map.
+
+    Args:
+        in_channels (int): Channel dimension of the feature map.
+        out_channels (int): Channel dimension of the output.
+        encoder_stride (int): The total stride of the encoder.
+        feature_Nd (str): Build Nd feature in {'1d', '2d'}. Default: '2d'.
+    """
+
+    def __init__(self,
+                 in_channels=768,
+                 out_channels=4,
+                 encoder_stride=1,
+                 feature_Nd="1d",
+                 init_cfg=None):
+        super(BERTMLMNeck, self).__init__(init_cfg)
+        self.out_channels = out_channels
+        self.encoder_stride = encoder_stride
+        self.feature_Nd = feature_Nd
+        assert feature_Nd == "1d"
+
+        self.decoder = nn.Sequential(
+            nn.Linear(in_channels, in_channels),
+            nn.GELU(),
+            nn.LayerNorm(in_channels),
+            nn.Linear(in_channels, encoder_stride * out_channels),
+        )
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, (nn.Conv1d, nn.Linear)):
+                trunc_normal_init(m, std=0.02, bias=0)
+            elif isinstance(m, (nn.LayerNorm)):
+                constant_init(m, val=1, bias=0)
+
+    def forward(self, x):
+        if isinstance(x, list):
+            x = x[-1]
+        x = self.decoder(x)  # (BxL, C)
+        if self.encoder_stride > 1:
+            x = x.reshape(-1, self.out_channels)
+
+        return x
 
 
 @NECKS.register_module()
@@ -165,15 +215,12 @@ class SimMIMNeck(BaseModule):
                 nn.PixelShuffle(encoder_stride),
             )
         else:
-            self.decoder = nn.Conv1d(
-                in_channels=in_channels,
-                out_channels=encoder_stride * out_channels,
-                kernel_size=1,
-            )
+            self.decoder = nn.Linear(
+                in_channels, encoder_stride * out_channels)
 
     def init_weights(self):
         for m in self.modules():
-            if isinstance(m, (nn.Conv1d, nn.Conv2d)):
+            if isinstance(m, (nn.Conv1d, nn.Conv2d, nn.Linear)):
                 trunc_normal_init(m, std=0.02, bias=0)
 
     def forward(self, x):
@@ -181,6 +228,75 @@ class SimMIMNeck(BaseModule):
             x = x[-1]
         x = self.decoder(x)
         if self.feature_Nd == "1d":
-            x = x.reshape(x.size(0), -1, self.out_channels)
+            x = x.reshape(-1, self.out_channels)  # (BxL, C)
 
         return x
+
+
+@NECKS.register_module()
+class NonLinearLMNeck(BaseModule):
+    """Non-linear Neck For MIM/MLM Pre-training.
+
+    Args:
+        in_channels (int): Channel dimension of the feature map. It should
+            be the decoder output channel if decoder_cfg is not None.
+        in_chans (int): The channel of input image. Defaults to 3.
+        encoder_stride (int): The total stride of the encoder.
+        feature_Nd (str): Build Nd feature in {'1d', '2d'}. Default: '2d'.
+        decoder_cfg (dict): Config dict for non-linear blocks. Defaults to None.
+        act_cfg (dict): Whether to use an activation function. Defaults to None.
+    """
+
+    def __init__(self,
+                 in_channels=128,
+                 in_chans=3,
+                 kernel_size=1,
+                 encoder_stride=32,
+                 feature_Nd="2d",
+                 decoder_cfg=None,
+                 act_cfg=None,
+                 init_cfg=None):
+        super(NonLinearLMNeck, self).__init__(init_cfg)
+        assert decoder_cfg is None or isinstance(decoder_cfg, dict)
+        assert act_cfg is None or isinstance(act_cfg, dict)
+        self.decoder = builder.build_neck(decoder_cfg) \
+            if decoder_cfg is not None else None
+        self.activate = build_activation_layer(act_cfg) \
+            if act_cfg is not None else None
+        if feature_Nd == "2d":
+            self.decoder_pred = nn.Sequential(
+                nn.Conv2d(
+                    in_channels=in_channels,
+                    out_channels=encoder_stride**2 * in_chans,
+                    kernel_size=kernel_size,
+                    stride=1,
+                    padding=kernel_size // 2,
+                ),
+                nn.PixelShuffle(encoder_stride),
+            )
+        else:
+            self.decoder_pred = nn.Linear(
+                in_channels, encoder_stride * in_chans)
+
+    def init_weights(self):
+        if self.init_cfg is not None:
+            super(NonLinearLMNeck, self).init_weights()
+            return
+        for m in self.modules():
+            if isinstance(m, (nn.Conv1d, nn.Conv2d, nn.Linear)):
+                trunc_normal_init(m, std=0.02, bias=0)
+            elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d)):
+                constant_init(m, val=1, bias=0)
+
+    def forward(self, x):
+        assert isinstance(x, list)
+        if self.decoder is not None:
+            dec = self.decoder([x[-1]])[0]
+        else:
+            dec = x[-1]
+
+        dec = self.decoder_pred(dec)
+        if self.activate is not None:
+            dec = self.activate(dec)
+
+        return [dec]

@@ -26,11 +26,14 @@ def main():
     cfg_list = os.listdir(dir_path)
     
     for cfg in cfg_list:
-        if cfg.find("_ep") == -1:
+        if cfg.find("_ep") == -1 or cfg.find("_epochs") == -1:
             print("bad config name or dir:", cfg)
             continue
-        
-        epoch_num = cfg.split("_ep")[1]
+
+        if cfg.find("_epochs") != -1:
+            epoch_num = cfg.split("_epochs")[1]
+        elif cfg.find("_ep") != -1:
+            epoch_num = cfg.split("_ep")[1]
         ckpt_path = os.path.join(dir_path, cfg, "epoch_"+epoch_num+".pth")
         save_name = os.path.join(save_path, cfg+".pth")
         
