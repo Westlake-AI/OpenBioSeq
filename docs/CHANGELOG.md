@@ -4,10 +4,11 @@
 
 #### Highlight
 * Support various popular backbones (ConvNets and ViTs), various image datasets, popular mixup methods, and benchmarks for supervised learning. Config files are available.
-* Support popular self-supervised methods (e.g., BYOL, MoCo.V3, MAE) on both large-scale and small-scale datasets, and self-supervised benchmarks (merged from MMSelfSup). Config files are available.
+* Support popular self-supervised methods (e.g., BYOL, MoCo.V3, MAE) on both large-scale and small-scale datasets, and self-supervised benchmarks (merged from MMSelfSup). Config files are available. Support BERT pre-training method and update config files.
 * Support analyzing tools for self-supervised learning (kNN/SVM/linear metrics and t-SNE/UMAP visualization).
 * Convenient usage of configs: fast configs generation by 'auto_train.py' and configs inheriting (MMCV).
 * Support mixed-precision training (NVIDIA Apex or MMCV Apex).
+* Refactor `openbioseq.core` and support Adan optimizer.
 
 #### Bug Fixes
 * Done code refactoring follows MMSelfSup and MMClassification.

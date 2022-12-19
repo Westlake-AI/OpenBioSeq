@@ -1,10 +1,10 @@
 # dataset settings
-data_root = 'data/gRNA_pretrain/'
+data_root = 'data/on_target_K562/train/'
 data_source_cfg = dict(
     type='BioSeqDataset',
     file_list=None,  # use all splits
     word_splitor="", data_splitor="\t", mapping_name="ACGT",  # gRNA tokenize
-    has_labels=False, return_label=False,  # pre-training
+    has_labels=True, return_label=False,  # pre-training
     max_data_length=int(1e7),
     data_type="regression",
 )

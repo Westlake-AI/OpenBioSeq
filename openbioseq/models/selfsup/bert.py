@@ -1,3 +1,4 @@
+import random
 import torch
 
 from openbioseq.utils import print_log
@@ -18,7 +19,8 @@ class BERT(BaseModel):
         backbone (dict): Config dict for encoder.
         neck (dict): Config dict for encoder. Defaults to None.
         head (dict): Config dict for loss functions. Defaults to None.
-        pretrained (str, optional): Path to pre-trained weights. Default: None.
+        mask_ratio (float): Masking ratio for MLM pre-training. Default to 0.15.
+        pretrained (str, optional): Path to pre-trained weights. Default to None.
         init_cfg (dict): Config dict for weight initialization.
             Defaults to None.
     """
@@ -28,6 +30,7 @@ class BERT(BaseModel):
                  neck=None,
                  head=None,
                  mask_ratio=0.15,
+                 spin_stride=[],
                  pretrained=None,
                  init_cfg=None,
                  **kwargs):
@@ -37,6 +40,9 @@ class BERT(BaseModel):
         self.neck = builder.build_neck(neck)
         self.head = builder.build_head(head)
         self.mask_ratio = mask_ratio
+        self.spin_stride = list() if not isinstance(spin_stride, (tuple, list)) \
+            else list(spin_stride)
+
         self.patch_size = getattr(self.backbone, 'patch_size', 1)
         if self.patch_size > 1:
             self.padding = AdaptivePadding1d(
@@ -95,7 +101,14 @@ class BERT(BaseModel):
             data = self.padding(data)
         B, _, L = data.size()
 
-        mask = torch.bernoulli(torch.full([1, L], self.mask_ratio)).cuda()
+        if len(self.spin_stride) > 0:
+            spin = random.choices(self.spin_stride, k=1)[0]
+            assert L % spin == 0 and spin >= 1
+            spin_L = L // spin
+            mask = torch.bernoulli(torch.full([1, spin_L], self.mask_ratio)).cuda()
+            mask = mask.view(1, spin_L, 1).expand(1, spin_L, spin).reshape(1, L)
+        else:
+            mask = torch.bernoulli(torch.full([1, L], self.mask_ratio)).cuda()
         latent, _ = self.backbone(data, mask=None)
         latent = latent.reshape(-1, latent.size(2))  # (B, L, C) -> (BxL, C)
         data_rec = self.neck(latent)
