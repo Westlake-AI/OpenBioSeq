@@ -1,4 +1,8 @@
 # OpenBioSeq
+[![PyPI](https://img.shields.io/pypi/v/OpenBioSeq)](https://pypi.org/project/OpenBioSeq)
+[![license](https://img.shields.io/badge/license-Apache--2.0-%23B7A800)](https://github.com/Westlake-AI/OpenBioSeq/blob/main/LICENSE)
+![open issues](https://img.shields.io/github/issues-raw/Westlake-AI/OpenBioSeq?color=%23FF9600)
+[![issue resolution](https://img.shields.io/badge/issue%20resolution-1%20d-%23009763)](https://github.com/Westlake-AI/OpenBioSeq/issues)
 
 **News**
 

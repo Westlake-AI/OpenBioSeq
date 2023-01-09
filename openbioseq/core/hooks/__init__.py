@@ -5,7 +5,7 @@ from .addtional_scheduler import \
     CustomCosineAnnealingHook
 from .builder import build_hook, build_addtional_scheduler, build_optimizer
 from .deepcluster_hook import DeepClusterHook
-from .ema_hook import EMAHook
+from .ema_hook import EMAHook, SwitchEMAHook
 from .extractor import Extractor
 from .lr_scheduler import StepFixCosineAnnealingLrUpdaterHook
 from .momentum_hook import CosineHook, StepHook, CosineScheduleHook, StepScheduleHook
@@ -27,6 +27,6 @@ __all__ = [
     'build_hook', 'build_addtional_scheduler', 'build_optimizer',
     'DeepClusterHook', 'ODCHook', 'PreciseBNHook', 'SwAVHook',
     'StepFixCosineAnnealingLrUpdaterHook', 'CosineHook', 'StepHook', 'CosineScheduleHook', 'StepScheduleHook',
-    'EMAHook', 'Extractor', 'SAVEHook', 'SSLMetricHook', 'ValidateHook',
+    'EMAHook', 'SwitchEMAHook', 'Extractor', 'SAVEHook', 'SSLMetricHook', 'ValidateHook',
     'DistOptimizerHook', 'Fp16OptimizerHook',
 ]
