@@ -7,7 +7,6 @@ from ..registry import DATASOURCES
 from ..utils import read_file
 
 
-
 @DATASOURCES.register_module
 class DNASeqDataset(object):
     """The implementation for loading any bio seqences.
@@ -95,7 +94,11 @@ class DNASeqDataset(object):
                     # data = [mapping[tok] for tok in l[self.col_names.index('seq')]] + [0] * padding
                     data_list = list(map(mapping.get, l[self.col_names.index('seq')]))
                     padding = self.max_seq_length - len(data_list)
-                    data = data_list + [0] * padding
+                    if padding < 0:
+                        data = data_list[:self.max_seq_length]
+                    else:
+                        data = data_list + [0] * padding
+
                     label = l[self.col_names.index(self.target_type)]
                     
                     if self.data_type == "classification":

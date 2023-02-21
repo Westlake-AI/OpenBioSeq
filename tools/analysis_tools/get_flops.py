@@ -1,4 +1,9 @@
-# Copyright (c) OpenMMLab. All rights reserved.
+"""
+An example to count Params and FLOPs.
+
+Example command:
+python tools/get_flops.py [PATH_TO_config] --channel 4 --shape 512
+"""
 import argparse
 
 from mmcv import Config
@@ -13,13 +18,13 @@ def parse_args():
     parser.add_argument(
         '--channel',
         type=int,
-        default=3,
+        default=4,
         help='input data channel')
     parser.add_argument(
         '--shape',
         type=int,
         nargs='+',
-        default=[224, 224],
+        default=[512],
         help='input data size')
     args = parser.parse_args()
     return args
@@ -36,6 +41,8 @@ def main():
         input_shape = (in_channel, ) + tuple(args.shape)
     else:
         raise ValueError('invalid input shape')
+    if args.channel == 0:  # using nn.Embedding in the model
+        input_shape = input_shape[1:]
 
     cfg = Config.fromfile(args.config)
     model = build_model(cfg.model)

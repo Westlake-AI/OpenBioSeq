@@ -2,9 +2,9 @@ _base_ = [
     '../../../_base_/datasets/DNA/dna.py',
     '../../../_base_/default_runtime.py',
 ]
+
 embed_dim = 64
-patch_size = 2
-seq_len = 1024
+seq_len = 512
 
 # model settings
 model = dict(
@@ -12,7 +12,10 @@ model = dict(
     pretrained=None,
     backbone=dict(
         type='DNATransformer',
-        arch='deit-s',
+        arch={'embed_dims': embed_dim,
+              'num_layers': 12,
+              'num_heads': embed_dim // 16,
+              'feedforward_channels': embed_dim * 4},
         in_channels=4,
         seq_len=seq_len,
         norm_cfg=dict(type='LN', eps=1e-6),
@@ -32,37 +35,59 @@ model = dict(
         with_avg_pool=True, in_channels=embed_dim, out_channels=1),
 )
 
+# dataset settings
+data_root = 'data/dna/'
+data_source_cfg = dict(
+    type='DNASeqDataset',
+    file_list=None,  # use all splits
+    word_splitor="", data_splitor=",", mapping_name="ACGT",  # gRNA tokenize
+    data_type="regression", target_type='total',
+    filter_condition=20, max_seq_length=512,
+)
+
+data = dict(
+    samples_per_gpu=64,  # bs64 x 8gpu x 2 accu = bs1024
+    workers_per_gpu=4,
+    train=dict(
+        data_source=dict(
+            root=data_root+"train", **data_source_cfg)),
+    val=dict(
+        data_source=dict(
+            root=data_root+"test", **data_source_cfg)),
+)
+update_interval = 2
+
 # optimizer
 optimizer = dict(
     type='AdamW',
-    lr=3e-3,
-    weight_decay=5e-2, eps=1e-8, betas=(0.9, 0.999),
+    lr=5e-3,
+    weight_decay=1e-2, eps=1e-8, betas=(0.9, 0.999),
     paramwise_options={
         '(bn|ln|gn)(\d+)?.(weight|bias)': dict(weight_decay=0.),
         'norm': dict(weight_decay=0.),
         'bias': dict(weight_decay=0.),
         'pos_embed': dict(weight_decay=0.),
         'gamma': dict(weight_decay=0.),
-        # 'noise_sigma': dict(weight_decay=0., lr_mult=1e-1),
+        'noise_sigma': dict(weight_decay=0., lr_mult=1e-1),
     })
 
 # apex
 use_fp16 = False
-fp16 = dict(type='apex', loss_scale=dict(mode='dynamic'))
+fp16 = dict(type='mmcv', loss_scale='dynamic')
 optimizer_config = dict(
-    grad_clip=dict(max_norm=5.0), update_interval=1)
+    grad_clip=dict(max_norm=5.0), update_interval=update_interval)
 
 # learning policy
 lr_config = dict(
     policy='CosineAnnealing',
     by_epoch=False, min_lr=1e-5,
     warmup='linear',
-    warmup_iters=5, warmup_by_epoch=True,
+    warmup_iters=1, warmup_by_epoch=True,
     warmup_ratio=1e-5,
 )
 
 # checkpoint
-checkpoint_config = dict(interval=100, max_keep_ckpts=1)
+checkpoint_config = dict(interval=1, max_keep_ckpts=1)
 
 # runtime settings
-runner = dict(type='EpochBasedRunner', max_epochs=100)
+runner = dict(type='EpochBasedRunner', max_epochs=50)

@@ -1,7 +1,5 @@
 import math
 from typing import Sequence
-from functools import reduce
-from operator import mul
 
 import numpy as np
 import torch
@@ -13,8 +11,7 @@ from mmcv.runner.base_module import ModuleList
 from mmcv.utils.parrots_wrapper import _BatchNorm
 
 from openbioseq.utils import get_root_logger, print_log
-from ..utils import resize_pos_embed, PatchEmbed1d, ConvPatchEmbed1d, \
-                    build_1d_sincos_position_embedding
+from ..utils import resize_pos_embed, build_1d_sincos_position_embedding
 from ..builder import BACKBONES
 from .base_backbone import BaseBackbone
 from .vision_transformer import TransformerEncoderLayer
@@ -203,26 +200,6 @@ class DNATransformer(BaseBackbone):
             padding_idx=padding_index
         )
         self.embedding_layer = nn.Embedding(**_seq_cfg)
-        # _patch_cfg = dict(
-        #     in_channels=in_channels,
-        #     input_size=seq_len,
-        #     embed_dims=self.embed_dims,
-        #     conv_type='Conv1d',
-        #     kernel_size=patch_size,
-        #     stride=patch_size if patchfied else patch_size // 2,
-        # )
-        # if stem_layer <= 1:
-        #     _patch_cfg.update(patch_cfg)
-        #     self.patch_embed = PatchEmbed1d(**_patch_cfg)
-        # else:
-        #     _patch_cfg.update(dict(
-        #         num_layers=stem_layer,
-        #         act_cfg=act_cfg,
-        #     ))
-        #     _patch_cfg.update(patch_cfg)
-        #     self.patch_embed = ConvPatchEmbed1d(**_patch_cfg)
-        # self.patch_resolution = self.patch_embed.init_out_size
-        # self.num_patches = self.patch_embed.init_out_size
 
         # Set cls token
         if output_cls_token:
@@ -328,11 +305,7 @@ class DNATransformer(BaseBackbone):
                     cls_token=True)
                 self.pos_embed.data.copy_(pos_emb)
                 self.pos_embed.requires_grad = False
-                # xavier_uniform initialization for PatchEmbed1d
-                # if isinstance(self.patch_embed, PatchEmbed1d):
-                #     val = math.sqrt(
-                #         6. / float(3 * reduce(mul, self.patch_size, 1) + self.embed_dims))
-                #     uniform_init(self.patch_embed.projection, -val, val, bias=0)
+
                 # initialization for linear layers
                 for name, m in self.named_modules():
                     if isinstance(m, nn.Linear):
@@ -373,8 +346,10 @@ class DNATransformer(BaseBackbone):
 
     def forward(self, x):
         B = x.shape[0]
+        if x.dtype != torch.long:  # must be indice
+            x = x.type(torch.long).clamp(0, x.size(1)-1)
         x = self.embedding_layer(x)
-        
+
         if self.cls_token is not None:
             cls_tokens = self.cls_token.expand(B, -1, -1)
             x = torch.cat((cls_tokens, x), dim=1)

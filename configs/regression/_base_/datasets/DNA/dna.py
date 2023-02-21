@@ -5,7 +5,7 @@ data_source_cfg = dict(
     file_list=None,  # use all splits
     word_splitor="", data_splitor=",", mapping_name="ACGT",  # gRNA tokenize
     data_type="regression", target_type='total',
-    filter_condition=0
+    filter_condition=5, max_seq_length=512
 )
 
 dataset_type = 'RegressionDataset'
@@ -41,8 +41,8 @@ data = dict(
 
 # validation hook
 evaluation = dict(
-    initial=False,
-    interval=5,
+    initial=True,
+    interval=1,
     samples_per_gpu=100,
     workers_per_gpu=2,
     eval_param=dict(
@@ -52,4 +52,4 @@ evaluation = dict(
 )
 
 # checkpoint
-checkpoint_config = dict(interval=200, max_keep_ckpts=1)
+checkpoint_config = dict(interval=1, max_keep_ckpts=1)
