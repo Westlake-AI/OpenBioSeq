@@ -137,3 +137,4 @@ configs/selfsup/processed
 # configs/selfsup
 *.json
 *.toml
+*.ipynb

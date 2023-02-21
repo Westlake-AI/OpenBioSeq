@@ -54,7 +54,7 @@ def read_file(filename, encoding=None):
 
     Supported file types: 'txt', 'npy', '' (binary encoded file).
     """
-    if filename.split(".")[-1] == "txt":
+    if filename.split(".")[-1] == "txt" or filename.split(".")[-1] == 'csv':
         fp = open(filename, 'r', encoding=encoding)
         lines = fp.readlines()
     elif filename.split(".")[-1] == "npy":

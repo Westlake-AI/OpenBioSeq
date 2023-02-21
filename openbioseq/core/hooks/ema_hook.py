@@ -98,7 +98,7 @@ class EMAHook(Hook):
 @HOOKS.register_module()
 class SwitchEMAHook(Hook):
     r"""Exponential Moving Average Hook.
-    IP172 v12.23
+    IP120 v01.10
 
     Use Exponential Moving Average on all parameters of model in training
     process. All parameters have a ema backup, which update by the formula
@@ -133,6 +133,7 @@ class SwitchEMAHook(Hook):
                  warmup_ratio=0.9,
                  switch_params=False,
                  switch_by_iter=False,
+                 switch_start=0,
                  switch_interval=100,
                  full_params_ema=False,
                  update_interval=1,
@@ -154,9 +155,9 @@ class SwitchEMAHook(Hook):
 
         self.switch_params = switch_params
         self.switch_by_iter = switch_by_iter
+        self.switch_start = switch_start
         self.switch_interval = switch_interval
         self.full_params_ema = full_params_ema
-        self.is_warmup = True
 
     def get_warmup_momentum(self, cur_iters):
         if self.warmup == 'constant':
@@ -199,10 +200,8 @@ class SwitchEMAHook(Hook):
             curr_iter = runner.iter
             if self.warmup is None or curr_iter > self.warmup_iters:
                 self.regular_momentum = self.momentum
-                self.is_warmup = False
             else:
                 self.regular_momentum = self.get_warmup_momentum(curr_iter)
-                self.is_warmup = True
             for name, parameter in self.model_parameters.items():
                 buffer_name = self.param_ema_buffer[name]
                 buffer_parameter = self.model_buffers[buffer_name]
@@ -210,7 +209,7 @@ class SwitchEMAHook(Hook):
                     parameter.data, alpha=1. - self.regular_momentum)
         # copy EMA to the model
         if self.switch_params and self.switch_by_iter:
-            if not self.is_warmup:
+            if curr_iter > self.switch_start:
                 if not self.every_n_iters(runner, self.switch_interval):
                     self._switch_ema_parameters()
 
@@ -224,7 +223,7 @@ class SwitchEMAHook(Hook):
         EvalHook."""
         self._swap_ema_parameters()
         if self.switch_params and not self.switch_by_iter:  # copy EMA to the model
-            if not self.is_warmup:
+            if runner.epoch > self.switch_start:
                 if not self.every_n_epochs(runner, self.switch_interval):
                     self._switch_ema_parameters()
 
