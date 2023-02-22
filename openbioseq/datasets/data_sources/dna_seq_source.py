@@ -48,6 +48,7 @@ class DNASeqDataset(object):
                  data_splitor=" ",
                  mapping_name="ACGT",
                  has_labels=True,
+                 return_label=True,
                  target_type='',
                  filter_condition=0,
                  data_type="classification",
@@ -71,6 +72,7 @@ class DNASeqDataset(object):
 
         # instance vars
         self.has_labels = len(lines[0].split(data_splitor)) >= 2 and has_labels
+        self.return_label = return_label
         self.data_type = data_type
         self.max_seq_length = max_seq_length
         self.filter_condition = filter_condition
@@ -125,7 +127,7 @@ class DNASeqDataset(object):
 
     def get_sample(self, idx):
         seq = self.data_list[idx]
-        if self.has_labels:
+        if self.has_labels and self.return_label:
             target = self.labels[idx]
             return seq, target
         else:

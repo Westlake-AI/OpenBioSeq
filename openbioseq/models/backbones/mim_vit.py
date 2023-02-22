@@ -92,7 +92,13 @@ class MAETransformer(SequenceTransformer):
     def forward(self, x):
         """ MAE backbone only used for MAE model """
         B = x.shape[0]
-        x, _ = self.patch_embed(x)
+        if not self.with_embedding:
+            x, _ = self.patch_embed(x)
+        else:
+            if x.dtype != torch.long:  # must be indice
+                x = x.type(torch.long).clamp(0, x.size(1)-1)
+            x = self.embedding_layer(x)
+
         # add pos embed w/o cls token
         x = x + self.pos_embed[:, 1:, :]
         # masking: length -> length * mask_ratio
@@ -360,7 +366,13 @@ class SimMIMTransformer(SequenceTransformer):
         Returns:
             tuple: A tuple containing features from multi-stages.
         """
-        x, seq_len = self.patch_embed(x)
+        if not self.with_embedding:
+            x, seq_len = self.patch_embed(x)
+        else:
+            if x.dtype != torch.long:  # must be indice
+                x = x.type(torch.long).clamp(0, x.size(1)-1)
+            x = self.embedding_layer(x)
+            seq_len = self.seq_len
 
         if self.mask_layer == 0:
             if mask is None:
@@ -368,8 +380,9 @@ class SimMIMTransformer(SequenceTransformer):
             x = forward_simmim_masking(
                 x, self.mask_token, mask, self.mask_mode)
 
-        cls_tokens = self.cls_token.expand(x.size(0), -1, -1)
-        x = torch.cat((cls_tokens, x), dim=1)
+        if self.with_cls_token or self.output_cls_token:
+            cls_tokens = self.cls_token.expand(x.size(0), -1, -1)
+            x = torch.cat((cls_tokens, x), dim=1)
         x = x + self.resize_pos_embed(
             self.pos_embed,
             src_shape=self.patch_resolution,
@@ -378,7 +391,7 @@ class SimMIMTransformer(SequenceTransformer):
             num_extra_tokens=self.num_extra_tokens)
         x = self.drop_after_pos(x)
 
-        if not self.with_cls_token:
+        if self.with_cls_token and not self.output_cls_token:
             # Remove class token for transformer encoder input
             x = x[:, 1:]
 
@@ -393,7 +406,7 @@ class SimMIMTransformer(SequenceTransformer):
             if i == len(self.layers) - 1 and self.final_norm:
                 x = self.norm1(x)
 
-        if self.with_cls_token:
+        if self.output_cls_token:
             x = x[:, 1:]
 
         return (x, mask)

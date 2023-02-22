@@ -185,7 +185,7 @@ class MIMHead(BaseModule):
                 mask = F.interpolate(mask.type_as(x).unsqueeze(1),
                                     scale_factor=(scale_h, scale_w), mode="nearest")
         else:  # (B, L, C) -> (B x L, C)
-            assert x.size(1) == mask.size(1) or mask.size(1) == 1
+            assert x.shape[-1] == mask.shape[-1] or mask.shape[-1] == 1
 
         # loss
         if self.unmask_weight > 0.:

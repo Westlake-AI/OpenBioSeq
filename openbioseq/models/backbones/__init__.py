@@ -4,7 +4,6 @@ from .mim_vit import MAETransformer, MAEViT, MIMVisionTransformer, SimMIMTransfo
 from .resnet import ResNet, ResNet_CIFAR, ResNet_Mix, ResNet_Mix_CIFAR
 from .seq_lstm import SequenceLSTM
 from .seq_transformer import SequenceTransformer
-from .seq_embed_transformer import DNATransformer
 from .timm_backbone import TIMMBackbone
 from .uniformer import UniFormer
 from .van import VAN
@@ -16,5 +15,5 @@ __all__ = [
     'MAETransformer', 'MAEViT', 'MIMVisionTransformer', 'SimMIMTransformer', 'SimMIMViT',
     'ResNet', 'ResNet_CIFAR', 'ResNet_Mix', 'ResNet_Mix_CIFAR',
     'SequenceLSTM', 'SequenceTransformer', 'TIMMBackbone', 'TransformerEncoderLayer',
-    'UniFormer', 'VAN', 'VisionTransformer', 'WideResNet', 'DNATransformer'
+    'UniFormer', 'VAN', 'VisionTransformer', 'WideResNet',
 ]

@@ -227,8 +227,6 @@ class SimMIMNeck(BaseModule):
         if isinstance(x, list):
             x = x[-1]
         x = self.decoder(x)
-        if self.feature_Nd == "1d":
-            x = x.reshape(-1, self.out_channels)  # (BxL, C)
 
         return x
 

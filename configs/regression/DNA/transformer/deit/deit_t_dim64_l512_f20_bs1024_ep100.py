@@ -11,12 +11,13 @@ model = dict(
     type='Classification',
     pretrained=None,
     backbone=dict(
-        type='DNATransformer',
+        type='SequenceTransformer',
         arch={'embed_dims': embed_dim,
               'num_layers': 12,
               'num_heads': embed_dim // 16,
               'feedforward_channels': embed_dim * 4},
         in_channels=4,
+        padding_index=0,
         seq_len=seq_len,
         norm_cfg=dict(type='LN', eps=1e-6),
         drop_rate=0.1,
@@ -44,16 +45,13 @@ data_source_cfg = dict(
     data_type="regression", target_type='total',
     filter_condition=20, max_seq_length=512,
 )
-
 data = dict(
     samples_per_gpu=64,  # bs64 x 8gpu x 2 accu = bs1024
     workers_per_gpu=4,
     train=dict(
-        data_source=dict(
-            root=data_root+"train", **data_source_cfg)),
+        data_source=dict(root=data_root+"train", **data_source_cfg)),
     val=dict(
-        data_source=dict(
-            root=data_root+"test", **data_source_cfg)),
+        data_source=dict(root=data_root+"test", **data_source_cfg)),
 )
 update_interval = 2
 

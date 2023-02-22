@@ -114,10 +114,10 @@ class BERT(BaseModel):
         data_rec = self.neck(latent)
         if isinstance(data_rec, list):
             data_rec = data_rec[-1]
-
-        target = data.permute(0, 2, 1).reshape(-1, data.size(1))  # (B, C, L) -> (BxL, C)
         if data_rec.dim() == 3:
             data_rec = data_rec.reshape(-1, data_rec.size(2))  # (B, L, C) -> (BxL, C)
+
+        target = data.permute(0, 2, 1).reshape(-1, data.size(1))  # (B, C, L) -> (BxL, C)
         mask = mask.view(1, L).expand(B, L).reshape(-1, 1)
         losses = self.head(target, data_rec, mask)
 

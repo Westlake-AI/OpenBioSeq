@@ -142,8 +142,9 @@ class SequenceTransformer(BaseBackbone):
                  seq_len=128,
                  patch_size=16,
                  patchfied=True,
-                 in_channels=3,
+                 in_channels=4,
                  embed_dims=None,
+                 padding_index=0,
                  out_indices=-1,
                  drop_rate=0.,
                  drop_path_rate=0.,
@@ -154,6 +155,7 @@ class SequenceTransformer(BaseBackbone):
                  act_cfg=dict(type='GELU'),
                  stem_layer=1,
                  final_norm=True,
+                 with_embedding=False,
                  with_cls_token=True,
                  output_cls_token=True,
                  interpolate_mode='linear',
@@ -192,31 +194,42 @@ class SequenceTransformer(BaseBackbone):
         self.num_layers = self.arch_settings['num_layers']
         self.seq_len = seq_len if seq_len is not None else 64
         self.patch_size = patch_size
+        self.with_embedding = with_embedding
         self.frozen_stages = frozen_stages
         self.norm_eval = norm_eval
         self.init_cfg = init_cfg
 
         # Set patch embedding
-        _patch_cfg = dict(
-            in_channels=in_channels,
-            input_size=seq_len,
-            embed_dims=self.embed_dims,
-            conv_type='Conv1d',
-            kernel_size=patch_size,
-            stride=patch_size if patchfied else patch_size // 2,
-        )
-        if stem_layer <= 1:
-            _patch_cfg.update(patch_cfg)
-            self.patch_embed = PatchEmbed1d(**_patch_cfg)
+        if not with_embedding:
+            _patch_cfg = dict(
+                in_channels=in_channels,
+                input_size=seq_len,
+                embed_dims=self.embed_dims,
+                conv_type='Conv1d',
+                kernel_size=patch_size,
+                stride=patch_size if patchfied else patch_size // 2,
+            )
+            self.patch_size = patch_size
+            if stem_layer <= 1:
+                _patch_cfg.update(patch_cfg)
+                self.patch_embed = PatchEmbed1d(**_patch_cfg)
+            else:
+                _patch_cfg.update(dict(
+                    num_layers=stem_layer, act_cfg=act_cfg))
+                _patch_cfg.update(patch_cfg)
+                self.patch_embed = ConvPatchEmbed1d(**_patch_cfg)
+            self.patch_resolution = self.patch_embed.init_out_size
+            self.num_patches = self.patch_embed.init_out_size
         else:
-            _patch_cfg.update(dict(
-                num_layers=stem_layer,
-                act_cfg=act_cfg,
-            ))
-            _patch_cfg.update(patch_cfg)
-            self.patch_embed = ConvPatchEmbed1d(**_patch_cfg)
-        self.patch_resolution = self.patch_embed.init_out_size
-        self.num_patches = self.patch_embed.init_out_size
+            _seq_cfg = dict(
+                num_embeddings=in_channels + 1,  # '0' for padding
+                embedding_dim=self.arch_settings['embed_dims'],
+                padding_idx=padding_index,
+            )
+            self.embedding_layer = nn.Embedding(**_seq_cfg)
+            self.patch_size = 1
+            self.patch_resolution = self.seq_len
+            self.num_patches = self.seq_len
 
         # Set cls token
         if output_cls_token:
@@ -281,10 +294,15 @@ class SequenceTransformer(BaseBackbone):
         # freeze stages
         self.stop_grad_conv1 = stop_grad_conv1
         self.fix_pos_embed = fix_pos_embed
-        if isinstance(self.patch_embed, PatchEmbed1d):
-            if stop_grad_conv1:
-                self.patch_embed.projection.weight.requires_grad = False
-                self.patch_embed.projection.bias.requires_grad = False
+        if not self.with_embedding:
+            if isinstance(self.patch_embed, PatchEmbed1d):
+                if stop_grad_conv1:
+                    self.patch_embed.projection.weight.requires_grad = False
+                    self.patch_embed.projection.bias.requires_grad = False
+        else:
+            if isinstance(self.embedding_layer, nn.Module):
+                if stop_grad_conv1:
+                    self.embedding_layer.weight.requires_grad = False
         if fix_pos_embed:
             pos_emb = build_1d_sincos_position_embedding(
                 patches_size=self.patch_resolution, embed_dims=self.embed_dims,
@@ -292,11 +310,11 @@ class SequenceTransformer(BaseBackbone):
             self.pos_embed.data.copy_(pos_emb)
             self.pos_embed.requires_grad = False
         self._freeze_stages()
-    
+
     @property
     def norm1(self):
         return getattr(self, self.norm1_name)
-    
+
     def init_weights(self, pretrained=None):
         super(SequenceTransformer, self).init_weights(pretrained)
 
@@ -322,11 +340,16 @@ class SequenceTransformer(BaseBackbone):
                     cls_token=True)
                 self.pos_embed.data.copy_(pos_emb)
                 self.pos_embed.requires_grad = False
+
                 # xavier_uniform initialization for PatchEmbed1d
-                if isinstance(self.patch_embed, PatchEmbed1d):
-                    val = math.sqrt(
-                        6. / float(3 * reduce(mul, self.patch_size, 1) + self.embed_dims))
-                    uniform_init(self.patch_embed.projection, -val, val, bias=0)
+                if not self.with_embedding:
+                    if isinstance(self.patch_embed, PatchEmbed1d):
+                        val = math.sqrt(
+                            6. / float(3 * reduce(mul, self.patch_size, 1) + self.embed_dims))
+                        uniform_init(self.patch_embed.projection, -val, val, bias=0)
+                else:
+                    nn.init.trunc_normal_(self.embedding_layer, mean=0, std=.02)
+
                 # initialization for linear layers
                 for name, m in self.named_modules():
                     if isinstance(m, nn.Linear):
@@ -338,12 +361,12 @@ class SequenceTransformer(BaseBackbone):
                             xavier_init(m, distribution='uniform')
                 if self.cls_token is not None:
                     nn.init.normal_(self.cls_token, std=1e-6)
-    
+
     def _prepare_pos_embed(self, state_dict, prefix, *args, **kwargs):
         name = prefix + 'pos_embed'
         if name not in state_dict.keys():
             return
-        
+
         ckpt_pos_embed_shape = state_dict[name].shape
         if self.pos_embed.shape != ckpt_pos_embed_shape:
             logger = get_root_logger()
@@ -367,8 +390,14 @@ class SequenceTransformer(BaseBackbone):
 
     def forward(self, x):
         B = x.shape[0]
-        x, seq_len = self.patch_embed(x)
-        
+        if not self.with_embedding:
+            x, seq_len = self.patch_embed(x)
+        else:
+            if x.dtype != torch.long:  # must be indice
+                x = x.type(torch.long).clamp(0, x.size(1)-1)
+            x = self.embedding_layer(x)
+            seq_len = self.seq_len
+
         if self.cls_token is not None:
             cls_tokens = self.cls_token.expand(B, -1, -1)
             x = torch.cat((cls_tokens, x), dim=1)
@@ -408,9 +437,14 @@ class SequenceTransformer(BaseBackbone):
     def _freeze_stages(self):
         """Freeze patch_embed layer, some parameters and stages."""
         if self.frozen_stages >= 0:
-            self.patch_embed.eval()
-            for param in self.patch_embed.parameters():
-                param.requires_grad = False
+            if not self.with_embedding:
+                self.patch_embed.eval()
+                for param in self.patch_embed.parameters():
+                    param.requires_grad = False
+            else:
+                self.embedding_layer.eval()
+                for param in self.embedding_layer.parameters():
+                    param.requires_grad = False
             
             if self.cls_token is not None:
                 self.cls_token.requires_grad = False
