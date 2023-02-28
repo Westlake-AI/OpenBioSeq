@@ -1,6 +1,6 @@
 import os
 import torch
-
+from itertools import product
 from tqdm import tqdm
 from openbioseq.utils import print_log
 from ..registry import DATASOURCES
@@ -17,14 +17,12 @@ class DNASeqDataset(object):
             validation training, e.g., file_list=['train_1.txt',].
         word_splitor (str): Split the data string.
         data_splitor (str): Split each seqence in the data.
-        mapping_name (str): Predefined mapping for the bio string.
         return_label (bool): Whether to return supervised labels.
         data_type (str): Type of the data.
     """
 
     CLASSES = None
-
-    ACGT = dict(N=0, A=1, C=2, G=3, T=4)
+    toks = ['A', 'C', 'G', 'T']
     col_names = ['pos1', 
                  'pos2', 
                  'pos3', 
@@ -39,18 +37,17 @@ class DNASeqDataset(object):
                  'seq', 
                  'umi', 
                  'total']
-    AminoAcids = dict()
 
     def __init__(self,
                  root,
                  file_list=None,
                  word_splitor="",
                  data_splitor=" ",
-                 mapping_name="ACGT",
                  has_labels=True,
                  return_label=True,
                  target_type='',
-                 filter_condition=0,
+                 k=6,
+                 padding_idx=0,
                  data_type="classification",
                  max_seq_length=1024,
                  max_data_length=None):
@@ -58,7 +55,6 @@ class DNASeqDataset(object):
         assert word_splitor in ["", " ", ",", ";", ".",]
         assert data_splitor in [" ", ",", ";", ".", "\t",]
         assert word_splitor != data_splitor
-        assert mapping_name in ["ACGT", "AminoAcids",]
         assert data_type in ["classification", "regression",]
         assert target_type in ['umi', 'total']
 
@@ -75,46 +71,39 @@ class DNASeqDataset(object):
         self.return_label = return_label
         self.data_type = data_type
         self.max_seq_length = max_seq_length
-        self.filter_condition = filter_condition
         self.target_type = target_type
-
+        self.padding_idx = padding_idx
+        self.kmer2idx = {''.join(x) : i for i, x in enumerate(product(self.toks, repeat=k), start=1)}
         print_log("Total file length: {}".format(len(lines)), logger='root')
 
         # preprocesing
-        mapping = getattr(self, mapping_name) # mapping str to ints
         self.data_list, self.labels = [], []
         for l in tqdm(lines, desc='Data preprocessing:'):
             l = l.strip().split(data_splitor)
+            kmer_seq = l[self.col_names.index('seq')].split(word_splitor)
+            kmer_idx_seq = list(map(self.kmer2idx.get, kmer_seq))
+            padding = self.max_seq_length - len(kmer_idx_seq)
 
-            # filtering
-            con_g = int(l[self.col_names.index('g_total_count')]) > self.filter_condition
-            con_r = int(l[self.col_names.index('r_total_count')]) > self.filter_condition
-            con = con_g & con_r
+            if padding < 0:
+                data = kmer_idx_seq[:self.max_seq_length]
+            else:
+                data = kmer_idx_seq + [padding_idx] * padding
 
-            if con:
-                if self.has_labels:
-                    # data = [mapping[tok] for tok in l[self.col_names.index('seq')]] + [0] * padding
-                    data_list = list(map(mapping.get, l[self.col_names.index('seq')]))
-                    padding = self.max_seq_length - len(data_list)
-                    if padding < 0:
-                        data = data_list[:self.max_seq_length]
-                    else:
-                        data = data_list + [0] * padding
-
-                    label = l[self.col_names.index(self.target_type)]
-                    
-                    if self.data_type == "classification":
-                        label = torch.tensor(float(label)).type(torch.LongTensor)
-                    else:
-                        label = torch.tensor(float(label)).type(torch.float32)
-
-                    self.labels.append(label)
+            if self.has_labels:
+                label = l[self.col_names.index(self.target_type)]
+                
+                if self.data_type == "classification":
+                    label = torch.tensor(float(label)).type(torch.LongTensor)
                 else:
-                    # assert self.return_label is False
-                    label = None
-                    data = l.strip()[self.col_names.index['seq']]
+                    label = torch.tensor(float(label)).type(torch.float32)
 
-                self.data_list.append(data)
+                self.labels.append(label)
+            else:
+                # assert self.return_label is False
+                label = None
+                data = l.strip()[self.col_names.index['seq']]
+
+            self.data_list.append(data)
                 
         if max_data_length is not None:
             assert isinstance(max_data_length, (int, float))

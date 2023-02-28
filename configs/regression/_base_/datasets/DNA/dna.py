@@ -2,10 +2,9 @@
 data_root = 'data/dna/'
 data_source_cfg = dict(
     type='DNASeqDataset',
-    file_list=None,  # use all splits
-    word_splitor="", data_splitor=",", mapping_name="ACGT",  # gRNA tokenize
-    data_type="regression", target_type='total',
-    filter_condition=5, max_seq_length=512
+    file_list=None, k=6, padding_idx=0,
+    word_splitor=" ", data_splitor=",",
+    data_type="regression", target_type='total', max_seq_length=512
 )
 
 dataset_type = 'RegressionDataset'
@@ -44,7 +43,7 @@ evaluation = dict(
     initial=True,
     interval=1,
     samples_per_gpu=100,
-    workers_per_gpu=2,
+    workers_per_gpu=4,
     eval_param=dict(
         metric=['mse', 'spearman', 'pearson'],
         metric_options=dict(average_mode='mean')
