@@ -32,7 +32,7 @@ def parse_args():
 def get_model_config(seq_len=63, embed_dim=64, patch_size=2):
     """ Transformer """
 
-    checkpoint = "https://github.com/Westlake-AI/OpenBioSeq/releases/download/v0.1.1/k562_layer4_p2_h4_d64_init_bs256_ep100.pth"
+    checkpoint = "https://github.com/Westlake-AI/OpenBioSeq/releases/download/v0.2.0/k562_layer4_p2_h4_d64_init_bs256_ep100.pth"
     model = dict(
         type='Classification',
         pretrained=None,
