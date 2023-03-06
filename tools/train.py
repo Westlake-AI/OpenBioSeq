@@ -29,6 +29,10 @@ def parse_args():
     parser.add_argument(
         '--resume_from', help='the checkpoint file to resume from')
     parser.add_argument(
+        '--auto_resume',
+        action='store_true',
+        help='resume from the latest checkpoint automatically')
+    parser.add_argument(
         '--pretrained', default=None, help='pretrained model file')
     parser.add_argument(
         '--gpus',
@@ -89,6 +93,7 @@ def main():
                                 osp.splitext(osp.basename(args.config))[0])
     if args.resume_from is not None:
         cfg.resume_from = args.resume_from
+    cfg.auto_resume = args.auto_resume
     cfg.gpus = args.gpus
 
     # check memcached package exists

@@ -74,6 +74,22 @@ class BaseModel(BaseModule, metaclass=ABCMeta):
         """
         pass
 
+    def forward_inference(self, data, **kwargs):
+        """
+        Args:
+            data (Tensor): List of tensors. Typically these should be
+                mean centered and std scaled.
+            kwargs (keyword arguments): Specific to concrete implementation.
+
+        Returns:
+            tuple[Tensor]: final model outputs.
+        """
+        x = self.backbone(data)
+        if self.with_neck:
+            x = self.neck(x)
+        preds = self.head(x)
+        return preds[0]
+
     def forward_vis(self, data, **kwargs):
         """Forward backbone features for visualization.
 
@@ -122,6 +138,8 @@ class BaseModel(BaseModule, metaclass=ABCMeta):
             return self.forward_train(data, **kwargs)
         elif mode == 'test':
             return self.forward_test(data, **kwargs)
+        elif mode == 'inference':
+            return self.forward_inference(data, **kwargs)
         elif mode == 'calibration':
             return self.forward_calibration(data, **kwargs)
         elif mode == 'extract':

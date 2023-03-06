@@ -26,6 +26,7 @@ def binarize(data_list, mapping, max_seq_length=None, data_splitor=None):
             token_list.append(onehot_seq)
         except:
             print(f"Error seq:", _seq)
+            raise ValueError
     return token_list
 
 
