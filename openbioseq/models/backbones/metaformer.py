@@ -128,6 +128,8 @@ class Attention(nn.Module):
         x = (attn @ v).transpose(1, 2)
         if H is not None:
             x = x.reshape(B, H, W, self.attention_dim)
+        else:
+            x = x.reshape(B, N, self.attention_dim)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x

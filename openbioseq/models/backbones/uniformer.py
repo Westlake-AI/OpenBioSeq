@@ -8,35 +8,9 @@ from mmcv.cnn.bricks.transformer import PatchEmbed
 from mmcv.utils.parrots_wrapper import _BatchNorm
 from mmcv.cnn.utils.weight_init import constant_init, trunc_normal_init
 
-from ..utils import MultiheadAttention, MultiheadAttentionWithRPE, PatchEmbed1d, to_2tuple
+from ..utils import LayerNorm2d, MultiheadAttention, MultiheadAttentionWithRPE, PatchEmbed1d, to_2tuple
 from ..registry import BACKBONES
 from .base_backbone import BaseBackbone
-
-
-@NORM_LAYERS.register_module('LN2d')
-class LayerNorm2d(nn.LayerNorm):
-    """LayerNorm on channels for 2d images.
-
-    Args:
-        num_channels (int): The number of channels of the input tensor.
-        eps (float): a value added to the denominator for numerical stability.
-            Defaults to 1e-5.
-        elementwise_affine (bool): a boolean value that when set to ``True``,
-            this module has learnable per-element affine parameters initialized
-            to ones (for weights) and zeros (for biases). Defaults to True.
-    """
-
-    def __init__(self, num_channels: int, **kwargs) -> None:
-        super().__init__(num_channels, **kwargs)
-        self.num_channels = self.normalized_shape[0]
-
-    def forward(self, x):
-        assert x.dim() == 4, 'LayerNorm2d only supports inputs with shape ' \
-            f'(N, C, H, W), but got tensor with shape {x.shape}'
-        # fix bug 'Grad strides do not match bucket view strides.' by contiguous()
-        return F.layer_norm(
-            x.permute(0, 2, 3, 1).contiguous(), self.normalized_shape, self.weight,
-            self.bias, self.eps).permute(0, 3, 1, 2).contiguous()
 
 
 class MLP(nn.Module):
