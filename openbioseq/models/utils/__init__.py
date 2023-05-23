@@ -5,6 +5,7 @@ from .gather_layer import GatherLayer, concat_all_gather, \
 from .grad_weight import GradWeighter
 from .helpers import is_tracing, to_2tuple, to_3tuple, to_4tuple, to_ntuple
 from .make_divisible import make_divisible
+from .norm import build_norm_layer, GRN, LayerNorm2d, LayerNormGeneral, RMSLayerNorm
 from .scale import Scale
 from .smoothing import Smoothing
 from .se_layer import SELayer
@@ -24,6 +25,7 @@ __all__ = [
    'batch_shuffle_ddp', 'batch_unshuffle_ddp', 'grad_batch_shuffle_ddp', 'grad_batch_unshuffle_ddp',
    'is_tracing', 'to_2tuple', 'to_3tuple', 'to_4tuple', 'to_ntuple',
    'make_divisible', 'Scale', 'Smoothing', 'SELayer',
+   'build_norm_layer', 'GRN', 'LayerNorm2d', 'LayerNormGeneral', 'RMSLayerNorm',
    'ConditionalPositionEncoding', 'MultiheadAttention', 'MultiheadAttentionWithRPE', 'ShiftWindowMSA',
    'HybridEmbed', 'PatchEmbed', 'AdaptivePadding1d', 'PatchEmbed1d', 'ConvPatchEmbed1d', 'PatchMerging',
    'resize_pos_embed', 'resize_relative_position_bias_table',
