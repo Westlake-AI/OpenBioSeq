@@ -36,8 +36,9 @@ Please refer to [CHANGELOG.md](docs/CHANGELOG.md) for details and release histor
 There are quick installation steps for develepment:
 
 ```shell
-conda create -n openbioseq python=3.8 pytorch=1.12 cudatoolkit=11.3 torchvision -c pytorch -y
+conda create -n openbioseq python=3.8 -y
 conda activate openbioseq
+pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113 # as an example
 pip install openmim
 mim install mmcv-full
 git clone https://github.com/Westlake-AI/OpenBioSeq.git

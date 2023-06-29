@@ -152,43 +152,33 @@ We support following datasets: CIFAR-10/100, [Tiny-ImageNet](https://www.kaggle.
 Here is a full script for setting up openmixup with conda and link the dataset path. The script does not download full datasets, you have to prepare them on your own.
 
 ```shell
-
 conda create -n openbioseq python=3.8 -y
-
 conda activate openbioseq
-
-
-conda install -c pytorch pytorch torchvision -y
+pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113 # as an example
 
 git clone https://github.com/Westlake-AI/OpenBioSeq.git
-
 cd openbioseq
 
+pip install openmim
+mim install mmcv-full
 python setup.py develop
 
-
 # download 'meta' and move to `data/meta` for image datasets
-
 wget https://github.com/Westlake-AI/openmixup/releases/download/dataset/meta.zip
-
 unzip -d data/meta meta.zip
 
 # download full classification datasets
-
 ln -s $CIFAR10_ROOT data/cifar10
-
 ln -s $CIFAR100_ROOT data/cifar100
-
 ln -s $IMAGENET_ROOT data/ImageNet
-
 ln -s $TINY_ROOT data/TinyImagenet
 
 # download VOC datasets
-
 bash tools/prepare_data/prepare_voc07_cls.sh $YOUR_DATA_ROOT
 
 ```
 
 ## Common Issues
 
-1. The training hangs / deadlocks in some intermediate iteration. See this [issue](https://github.com/open-mmlab/OpenSelfSup/issues/6). We haven't found this issue when using higher versions of PyTorch.
+1. The installation error might occur with high version of PyTorch and MMCV-full, `error: urllib3 2.0.3 is installed but urllib3<2.0 is required by {'google-auth'}`. You can tackle the error by `pip install urllib3==2.0.3 google-auth` and `python setup.py develop`.
+2. The training hangs / deadlocks in some intermediate iteration. See this [issue](https://github.com/open-mmlab/OpenSelfSup/issues/6). We haven't found this issue when using higher versions of PyTorch.

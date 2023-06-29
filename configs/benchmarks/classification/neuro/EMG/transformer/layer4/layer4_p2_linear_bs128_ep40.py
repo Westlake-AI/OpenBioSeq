@@ -63,12 +63,11 @@ optimizer = dict(
         'pos_embed': dict(weight_decay=0.),
     })
 
-# apex
+# fp16
 use_fp16 = False
-fp16 = dict(type='apex', loss_scale=dict(init_scale=512., mode='dynamic'))
+fp16 = dict(type='mmcv', loss_scale=dict(mode='dynamic'))
 optimizer_config = dict(
-    grad_clip=dict(max_norm=5.0),
-    update_interval=1, use_fp16=use_fp16)
+    grad_clip=dict(max_norm=5.0), update_interval=1)
 
 # learning policy
 lr_config = dict(

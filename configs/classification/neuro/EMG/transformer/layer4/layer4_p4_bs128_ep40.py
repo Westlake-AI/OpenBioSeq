@@ -1,11 +1,11 @@
 _base_ = [
-    '../../../../_base_/datasets/neuro/cls.py',
+    '../../../../_base_/datasets/processed/EMG.py',
     '../../../../_base_/default_runtime.py',
 ]
 
 embed_dim = 64
-patch_size = 30
-seq_len = 3000
+patch_size = 2
+seq_len = 50
 
 # model settings
 model = dict(
@@ -19,48 +19,30 @@ model = dict(
             num_heads=4,
             feedforward_channels=embed_dim * 4,
         ),
-        in_channels=1,
+        in_channels=16,
         patch_size=patch_size,
         seq_len=int(seq_len / patch_size) + bool(seq_len % patch_size != 0),
         norm_cfg=dict(type='LN', eps=1e-6),
         drop_rate=0.1,
         drop_path_rate=0.1,
-        init_values=1e-2,
-        final_norm=True,
         out_indices=-1,  # last layer
-        with_cls_token=False,
-        output_cls_token=False,
     ),
     head=dict(
-        type='ClsHead',
+        type='VisionTransformerClsHead',  # using cls_token
         loss=dict(type='CrossEntropyLoss', loss_weight=1.0),
-        with_avg_pool=True, multi_label=False, in_channels=embed_dim, num_classes=5)
-)
-
-# data
-data_root = 'data/sleepEDF/'
-data = dict(
-    train=dict(
-        data_source=dict(
-            type='ProcessedDataset', root=data_root, split='train',
-    )),
-    val=dict(
-        data_source=dict(
-            type='ProcessedDataset', root=data_root, split='test',
-    )),
+        in_channels=embed_dim, num_classes=18)
 )
 
 # optimizer
 optimizer = dict(
     type='AdamW',
-    lr=3e-3,
+    lr=3e-4,
     weight_decay=0.01, eps=1e-8, betas=(0.9, 0.999),
     paramwise_options={
         '(bn|ln|gn)(\d+)?.(weight|bias)': dict(weight_decay=0.),
         'bias': dict(weight_decay=0.),
         'cls_token': dict(weight_decay=0.),
         'pos_embed': dict(weight_decay=0.),
-        'gamma': dict(weight_decay=0.),
     })
 
 # fp16

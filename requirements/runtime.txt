@@ -8,7 +8,7 @@ pandas
 scipy
 six
 terminaltables
-sklearn
+scikit-learn
 seaborn
 tensorboard
 transformers
