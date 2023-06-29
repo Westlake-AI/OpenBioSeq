@@ -1,8 +1,4 @@
-try:
-    import transformers
-except ImportError:
-    transformers = None
-
+import json
 import torch
 import torch.nn as nn
 from mmcv.cnn import build_norm_layer
@@ -12,6 +8,22 @@ from openbioseq.utils import get_root_logger, print_log
 from openbioseq.models.utils import resize_pos_embed
 from ..builder import BACKBONES
 from .base_backbone import BaseBackbone
+
+try:
+    import transformers
+    from transformers.adapters import (AdapterConfig, PrefixTuningConfig,
+                                       LoRAConfig, MAMConfig, IA3Config)
+    _adapters = {
+        'bottleneck_adapter': AdapterConfig(mh_adapter=True, output_adapter=True,
+                                            reduction_factor=16, non_linearity="relu"),
+        'prefix_tuning': PrefixTuningConfig(flat=False, prefix_length=30),
+        'lora_adapter': LoRAConfig(r=8, alpha=16),
+        'mam_adapter': MAMConfig(),
+        'ia3_adapter': IA3Config()
+    }
+except ImportError:
+    transformers = None
+    _adapters = dict()
 
 
 def update_huggingface_config(config=None, config_args=dict()):
@@ -67,6 +79,7 @@ class HuggingFaceBackbone(BaseBackbone):
                  drop_rate=0.,
                  with_cls_token=True,
                  output_cls_token=True,
+                 adapter_name=None,
                  interpolate_mode='linear',
                  patch_cfg=dict(),
                  norm_cfg=dict(type='LN', eps=1e-12),
@@ -81,6 +94,13 @@ class HuggingFaceBackbone(BaseBackbone):
         arch_name = model_name + "Model"
         arch_conf = model_name + "Config"
         arch_conf = getattr(transformers, arch_conf)()
+        if not isinstance(config_args, dict):
+            try:
+                with open(config_args, 'r') as f:
+                    config_args = json.load(f)
+            except TypeError:
+                print('config_args is neither a dict nor a json file.')            
+    
         arch_conf = update_huggingface_config(arch_conf, config_args)
         if embed_dims is not None:
             setattr(arch_conf, 'hidden_size', embed_dims)
@@ -91,16 +111,32 @@ class HuggingFaceBackbone(BaseBackbone):
             embed_dims = getattr(arch_conf, 'hidden_size')
         
         # update HuggingFace model
-        hug_model = getattr(transformers, arch_name)(arch_conf)
+        self.hug_model = getattr(transformers, arch_name)(arch_conf)
+        self.hug_model.post_init()  # init weights
         if pretrained:
-            hug_model = hug_model.from_pretrained(pretrained)
-        hug_model.post_init()  # init weights
-        self.embeddings = hug_model.embeddings if not embed_update else None
-        self.encoder = hug_model.encoder
+            self.hug_model = self.hug_model.from_pretrained(pretrained)
+        
+        self.hug_model.pooler = nn.Identity()
+        self.adapter_name = adapter_name 
+        if self.adapter_name is not None:
+            print('Adapter adding')
+            adapter_config = _adapters[self.adapter_name]
+            # add a new adapter
+            self.hug_model.add_adapter(self.adapter_name, config=adapter_config)
+            # Enable adapter training
+            self.hug_model.train_adapter(self.adapter_name)
+            self.hug_model.set_active_adapters(self.adapter_name)
+
+        print('Trainable params: ')
+        for n, p in self.hug_model.named_parameters():
+            if p.requires_grad:
+                print(n)
 
         # update embedding
         self.embed_update = embed_update
         self.embed_dims = embed_dims
+        self.with_cls_token = with_cls_token
+        self.output_cls_token = output_cls_token
         if embed_update:
             patch_cfg['type'] = patch_cfg.get('type', 'PatchEmbed1d')
             assert patch_cfg['type'] in ['PatchEmbed', 'PatchEmbed1d',]
@@ -119,8 +155,6 @@ class HuggingFaceBackbone(BaseBackbone):
             if output_cls_token:
                 assert with_cls_token is True, f'with_cls_token must be True if' \
                     f'set output_cls_token to True, but got {with_cls_token}'
-            self.with_cls_token = with_cls_token
-            self.output_cls_token = output_cls_token
             if with_cls_token and output_cls_token:
                 self.num_extra_tokens = 1  # cls_token
                 self.cls_token = nn.Parameter(torch.zeros(1, 1, self.embed_dims))
@@ -186,40 +220,47 @@ class HuggingFaceBackbone(BaseBackbone):
         return resize_pos_embed(*args, **kwargs)
 
     def forward(self, x):
-        # embedding
-        if self.embed_update:
-            B = x.shape[0]
-            x, seq_len = self.embeddings(x)
-            
-            if self.cls_token is not None:
-                cls_tokens = self.cls_token.expand(B, -1, -1)
-                x = torch.cat((cls_tokens, x), dim=1)
-            x = x + resize_pos_embed(
-                self.pos_embed,
-                src_shape=self.num_patches,
-                dst_shape=seq_len,
-                mode=self.interpolate_mode,
-                num_extra_tokens=self.num_extra_tokens)
-            x = self.drop_after_pos(x)
-        else:
-            if self.embeddings is not None:  # original embed
-                x = self.embeddings(x)
-        # encoder
-        x = self.encoder(x)[0]  # 'last_hidden_state'
-
-        # final norm
+        x = self.hug_model(x)[0]
         x = self.norm1(x)
-        B, L, C = x.shape
-        if self.with_cls_token:
-            patch_token = x[:, 1:].reshape(B, L-1, C)
-            patch_token = patch_token.permute(0, 2, 1)
-            cls_token = x[:, 0]
-        else:
-            patch_token = x.permute(0, 2, 1)  # (B, C, L)
-            cls_token = None
-        if self.output_cls_token:
-            out = [patch_token, cls_token]
-        else:
-            out = patch_token
-        
+        patch_token = x.permute(0, 2, 1)  # (B, C, L)
+        out = patch_token
         return [out]
+
+    # def forward(self, x):
+    #     # embedding
+    #     if self.embed_update:
+    #         B = x.shape[0]
+    #         x, seq_len = self.embeddings(x)
+            
+    #         if self.cls_token is not None:
+    #             cls_tokens = self.cls_token.expand(B, -1, -1)
+    #             x = torch.cat((cls_tokens, x), dim=1)
+    #         x = x + resize_pos_embed(
+    #             self.pos_embed,
+    #             src_shape=self.num_patches,
+    #             dst_shape=seq_len,
+    #             mode=self.interpolate_mode,
+    #             num_extra_tokens=self.num_extra_tokens)
+    #         x = self.drop_after_pos(x)
+    #     else:
+    #         if self.embeddings is not None:  # original embed
+    #             x = self.embeddings(x)
+    #     # encoder
+    #     x = self.encoder(x)[0]  # 'last_hidden_state'
+
+    #     # final norm
+    #     x = self.norm1(x)
+    #     B, L, C = x.shape
+    #     if self.with_cls_token:
+    #         patch_token = x[:, 1:].reshape(B, L-1, C)
+    #         patch_token = patch_token.permute(0, 2, 1)
+    #         cls_token = x[:, 0]
+    #     else:
+    #         patch_token = x.permute(0, 2, 1)  # (B, C, L)
+    #         cls_token = None
+    #     if self.output_cls_token:
+    #         out = [patch_token, cls_token]
+    #     else:
+    #         out = patch_token
+        
+    #     return [out]

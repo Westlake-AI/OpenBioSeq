@@ -39,35 +39,35 @@ class DNASeqDataset(object):
     CLASSES = None
     toks = ['A', 'C', 'G', 'T']
     col_names = {'dna':['seq', 'label'],
-                'grna':['desc', 'lib', 'seq', 'label']}
-    # col_names = ['pos1', 
-    #              'pos2', 
-    #              'pos3', 
-    #              'g_umi_count', 
-    #              'r_umi_count', 
-    #              'g_total_count', 
-    #              'r_total_count', 
-    #              '1', 
-    #              '2', 
-    #              '3', 
-    #              '4', 
-    #              'seq', 
-    #              'umi', 
+                 'grna':['desc', 'lib', 'seq', 'label']}
+    # col_names = ['pos1',
+    #              'pos2',
+    #              'pos3',
+    #              'g_umi_count',
+    #              'r_umi_count',
+    #              'g_total_count',
+    #              'r_total_count',
+    #              '1',
+    #              '2',
+    #              '3',
+    #              '4',
+    #              'seq',
+    #              'umi',
     #              'total']
 
     def __init__(self,
-                root,
-                file_list=None,
-                word_splitor="",
-                data_splitor=" ",
-                has_labels=True,
-                return_label=True,
-                k=6,
-                padding_idx=0,
-                data_type="classification",
-                seq_type='dna',
-                max_seq_length=512,
-                max_data_length=None):
+                 root,
+                 file_list=None,
+                 word_splitor="",
+                 data_splitor=" ",
+                 has_labels=True,
+                 return_label=True,
+                 k=6,
+                 padding_idx=0,
+                 data_type="classification",
+                 seq_type='dna',
+                 max_seq_length=512,
+                 max_data_length=None):
         assert file_list is None or isinstance(file_list, list)
         assert word_splitor in ["", " ", ",", ";", ".",]
         assert data_splitor in [" ", ",", ";", ".", "\t",]

@@ -1,10 +1,10 @@
 # dataset settings
-data_root = 'data/dna/'
+data_root = 'data/on_target_K562/'
 data_source_cfg = dict(
     type='DNASeqDataset',
     file_list=None, k=6, padding_idx=0,
-    word_splitor=" ", data_splitor=",", seq_type='dna',
-    data_type="regression", max_seq_length=512
+    word_splitor=" ", data_splitor="\t", seq_type='grna',
+    data_type="regression", max_seq_length=63
 )
 
 dataset_type = 'RegressionDataset'
@@ -19,7 +19,7 @@ test_pipeline = [
 prefetch = False
 
 data = dict(
-    samples_per_gpu=32,
+    samples_per_gpu=256,
     workers_per_gpu=4,
     train=dict(
         type=dataset_type,
@@ -41,9 +41,9 @@ data = dict(
 # validation hook
 evaluation = dict(
     initial=False,
-    interval=1,
+    interval=2,
     samples_per_gpu=200,
-    workers_per_gpu=4,
+    workers_per_gpu=2,
     eval_param=dict(
         metric=['mse', 'spearman', 'pearson'],
         metric_options=dict(average_mode='mean')
@@ -51,4 +51,4 @@ evaluation = dict(
 )
 
 # checkpoint
-checkpoint_config = dict(interval=1, max_keep_ckpts=1)
+checkpoint_config = dict(interval=200, max_keep_ckpts=1)

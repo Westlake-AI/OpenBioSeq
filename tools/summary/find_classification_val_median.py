@@ -1,3 +1,18 @@
+"""
+Summarize the median results of the key from json logs
+
+It requires the folder built as follows:
+└── [PATH/to/exp_dir]
+    └── xxx_ep100
+        ├── [PATH/to/xxx.json] (i.e., xxx_ep100_yyy.log.json)
+        ├── ...
+
+Usage 1: summary results of a json file.
+   python tools/summary/find_classification_val_median.py [PATH/to/xxx.json] [total eposh] [last n epoch for median] [keys]
+Usage 2: summary results of a dir of training results (as json files).
+   python tools/summary/find_classification_val_median.py [PATH/to/exp_dir] [total eposh] [last n epoch for median] [keys]
+"""
+
 import argparse
 import numpy as np
 import json
@@ -41,8 +56,9 @@ def read_json(path, epoch_num=1200, record_num=20, print_all=True, keyword=None,
                     record_str.append(res)
     # output records
     print_str = "Median -- "
-    for l in record_str:
-        if print_all:
+    if print_all:
+        max_num = min(len(record_str), 5)
+        for l in record_str[-max_num:]:
             print(l)
     for k in keyword:
         record_acc[k] = np.median(np.array(record_acc[k]))
@@ -57,11 +73,12 @@ if __name__ == '__main__':
     args = parse_args()
     print(args)
 
+    keyword = args.get("key", ["head0"])
+    if isinstance(keyword, str):
+        keyword = keyword.split("-")
+
     # read record of a dir
     if args["path"].find(".json") == -1:
-        keyword = args.get("key", ["head0"])
-        if isinstance(keyword, str):
-            keyword = keyword.split("-")
         assert os.path.exists(args["path"])
         cfg_list = os.listdir(args["path"])
         cfg_list.sort()
@@ -94,10 +111,6 @@ if __name__ == '__main__':
 
     # read a json
     else:
+        args["print_all"] = True
+        args["keyword"] = keyword
         read_json(**args)
-
-
-# Usage 1: summary results of a json file.
-#    python tools/summary/find_classification_val_median.py [full_path to xxx.json] [total eposh] [last n epoch for median] [keys]
-# Usage 2: summary results of a dir of training results (as json files).
-#    python tools/summary/find_classification_val_median.py [full_path to the dir] [total eposh] [last n epoch for median] [keys]
