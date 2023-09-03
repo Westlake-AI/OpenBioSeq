@@ -1,0 +1,2 @@
+faiss-gpu>=1.6.1      # For DeepCluster and ODC
+genomic_benchmarks    # For Genomic Benchmarks
